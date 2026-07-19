@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SSH keys
+.ssh
+.ssh/*
+id_ed25519
+id_ed25519.pub
