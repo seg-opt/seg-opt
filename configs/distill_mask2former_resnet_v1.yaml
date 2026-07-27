@@ -1,0 +1,62 @@
+# First-iteration distillation config: lunar terrain segmentation
+# (background / sky / small_rock / large_rock).
+#
+# Teacher/student are swappable — this repo targets three candidate teachers
+# and three candidate lightweight student backbones:
+#   teacher.name:      mask2former | dinov3 | sam3
+#   student.backbone:  resnet | efficientnet | mobilenet
+#
+# This file picks the simplest concrete pairing to get a working baseline
+# end-to-end first: Mask2Former (already a full semantic-seg model) distilled
+# into a ResNet-34 encoder + U-Net decoder student, using logit-only KD
+# (soft-target cross-entropy on class logits, no feature matching). Swap
+# `model.teacher`/`model.student` to try DINOv3, SAM3, EfficientNet or
+# MobileNet once this baseline runs.
+#
+# NOTE: `dinov3`/`sam3` model_ids below are placeholders — verify the exact
+# HF Hub id for the checkpoint you want before using those teachers (both
+# are recent releases and ids may differ from what's listed).
+
+model:
+  num_classes: 4
+  teacher:
+    name: mask2former
+    model_id: facebook/mask2former-swin-large-ade-semantic
+    freeze: true
+    # alternatives:
+    # name: dinov3 | model_id: facebook/dinov3-vitl16-pretrain-lvd1689m  # verify id
+    # name: sam3   | model_id: facebook/sam3                            # verify id
+  student:
+    backbone: resnet
+    backbone_id: resnet34
+    decoder: unet
+    pretrained: true
+    # alternatives:
+    # backbone: efficientnet | backbone_id: efficientnet-b0
+    # backbone: mobilenet    | backbone_id: mobilenet_v3_small
+
+distillation:
+  temperature: 4.0         # softens teacher logits before KL
+  weight: 1.0               # weight on the soft-label KD loss
+  hard_label_weight: 1.0    # weight on CE loss vs. ground-truth masks
+
+data:
+  image_dir: data/images/render
+  mask_dir: data/images/ground
+  class_names: [background, sky, small_rock, large_rock]
+  image_size: 512
+  train_frac: 0.8
+  val_frac: 0.1
+  test_frac: 0.1
+
+training:
+  epochs: 50
+  batch_size: 16
+  learning_rate: 5.0e-4
+  weight_decay: 0.05
+  precision: bf16
+  logging_steps: 20
+  eval_steps: 200
+  save_steps: 200
+  seed: 42
+  output_dir: experiments/distill_mask2former_resnet34_v1
