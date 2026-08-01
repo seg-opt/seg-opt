@@ -1,23 +1,20 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.nn import functional as F
+
 
 class LogitDistillationLoss(nn.Module):
-    def __init__(self, temperature, alfa):
+    def __init__(self, temperature: float = 4.0):
         super().__init__()
         self.temperature = temperature
-        self.kl_div = nn.KLDivLoss(reduction='batchmean')
-        self.ce_loss = nn.CrossEntropyLoss()
-        self.alfa = alfa
+        self.kl_div = nn.KLDivLoss(reduction="batchmean")
 
+    def forward(
+        self,
+        student_logits: torch.Tensor,
+        teacher_logits: torch.Tensor,
+    ) -> torch.Tensor:
+        student_probs = F.log_softmax(student_logits / self.temperature, dim=1)
+        teacher_probs = F.softmax(teacher_logits / self.temperature, dim=1)
 
-    def forward(self, student_logits: torch.Tensor, teacher_logits: torch.Tensor, labels: torch.Tensor):
-        student_probab = F.log_softmax(student_logits)
-        teacher_probab = F.softmax(teacher_logits)
-
-        kd_loss = self.kl_div(student_probab, teacher_probab) * (self.temperature ** 2)
-        task_loss = self.ce_loss(labels, student_logits)
-
-        total_loss = self.alfa * kd_loss + (1.0 - self.alfa) * task_loss
-
-        return total_loss
+        return self.kl_div(student_probs, teacher_probs) * self.temperature**2
