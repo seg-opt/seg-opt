@@ -23,17 +23,11 @@ model:
     name: mask2former
     model_id: facebook/mask2former-swin-large-ade-semantic
     freeze: true
-    # alternatives:
-    # name: dinov3 | model_id: facebook/dinov3-vitl16-pretrain-lvd1689m  # verify id
-    # name: sam3   | model_id: facebook/sam3                            # verify id
   student:
     backbone: resnet
     backbone_id: resnet34
     decoder: unet
     pretrained: true
-    # alternatives:
-    # backbone: efficientnet | backbone_id: efficientnet-b0
-    # backbone: mobilenet    | backbone_id: mobilenet_v3_small
 
 distillation:
   temperature: 4.0         # softens teacher logits before KL
@@ -41,8 +35,14 @@ distillation:
   hard_label_weight: 1.0    # weight on CE loss vs. ground-truth masks
 
 data:
-  image_dir: data/images/render
-  mask_dir: data/images/ground
+  dataset_root: ../../datasets/artificial_lunar_landscape
+  image_dir: ../../datasets/artificial_lunar_landscape/images/render
+  mask_dir: ../../datasets/artificial_lunar_landscape/images/ground
+  excluded_id_files:
+    - cam_anomaly_IDs.txt
+    - ground_facing_IDs.txt
+    - mismatch_IDs.txt
+    - shadow_IDs.txt
   class_names: [background, sky, small_rock, large_rock]
   image_size: 512
   train_frac: 0.8
@@ -52,6 +52,7 @@ data:
 training:
   epochs: 50
   batch_size: 16
+  num_workers: 8
   learning_rate: 5.0e-4
   weight_decay: 0.05
   precision: bf16

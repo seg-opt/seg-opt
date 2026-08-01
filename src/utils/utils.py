@@ -47,6 +47,13 @@ class DataConfig:
     train_frac: float
     val_frac: float
     test_frac: float
+    dataset_root: str = ""
+    excluded_id_files: tuple[str, ...] = (
+        "cam_anomaly_IDs.txt",
+        "ground_facing_IDs.txt",
+        "mismatch_IDs.txt",
+        "shadow_IDs.txt",
+    )
 
 
 @dataclass
@@ -61,6 +68,7 @@ class TrainingConfig:
     save_steps: int
     seed: int
     output_dir: str
+    num_workers: int = 8
 
 
 @dataclass

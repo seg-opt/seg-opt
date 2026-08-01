@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 
 
-DATASET_ROOT = "../datasets/artificial_lunar_landscape" # todo make it in config
+DATASET_ROOT = "../../datasets/artificial_lunar_landscape"
 
 # Known-bad frames flagged by the dataset authors (camera glitches, masks that
 # don't match their render, no-sky/ground-facing shots, heavy shadow).
@@ -19,16 +19,25 @@ EXCLUDED_ID_FILES = [
 
 
 def find_pairs(image_dir, mask_dir):
-    images = {path.name: path for path in Path(image_dir).glob("*.png")}
-    masks = {path.name: path for path in Path(mask_dir).glob("*.png")}
+    def index_by_frame_id(directory):
+        indexed = {}
+        for path in Path(directory).glob("*.png"):
+            frame_id = path.stem[-4:]
+            if frame_id in indexed:
+                raise ValueError(f"duplicate frame ID {frame_id!r} in {directory}")
+            indexed[frame_id] = path
+        return indexed
+
+    images = index_by_frame_id(image_dir)
+    masks = index_by_frame_id(mask_dir)
     missing_masks = sorted(images.keys() - masks.keys())
     missing_images = sorted(masks.keys() - images.keys())
     if missing_masks or missing_images:
         raise ValueError(
-            "image/mask filenames do not match: "
+            "image/mask frame IDs do not match: "
             f"{len(missing_masks)} missing masks, {len(missing_images)} missing images"
         )
-    return [(images[name], masks[name]) for name in sorted(images)]
+    return [(images[frame_id], masks[frame_id]) for frame_id in sorted(images)]
 
 
 def load_excluded_ids(id_files):

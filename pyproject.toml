@@ -1,0 +1,23 @@
+[project]
+name = "seg-opt"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "ogrodowskijedrzej", email = "jedrekogro@gmail.com" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=2.0.2",
+    "pillow>=11.3.0",
+    "pyyaml>=6.0.2",
+    "scikit-learn>=1.6.1",
+    "torch>=2.8.0",
+]
+
+[project.scripts]
+seg-opt = "seg_opt:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
