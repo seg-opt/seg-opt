@@ -3,8 +3,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 
-AVAILABLE_CPUS = len(os.sched_getaffinity(0))
-DEFAULT_NUM_WORKERS = min(8, AVAILABLE_CPUS)
+DEFAULT_NUM_WORKERS = 2
 
 
 def make_dataloader(
