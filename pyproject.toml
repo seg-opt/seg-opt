@@ -1,11 +1,9 @@
 [project]
 name = "seg-opt"
 version = "0.1.0"
-description = "Add your description here"
+description = "Daj kamienia"
 readme = "README.md"
-authors = [
-    { name = "ogrodowskijedrzej", email = "jedrekogro@gmail.com" }
-]
+
 requires-python = ">=3.9"
 dependencies = [
     "numpy>=2.0.2",
@@ -15,9 +13,20 @@ dependencies = [
     "torch>=2.8.0",
 ]
 
-[project.scripts]
-seg-opt = "seg_opt:main"
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2,<9",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.1,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+minversion = "8.4"
+addopts = "-ra -q"
+pythonpath = ["."]
+testpaths = ["tests"]
