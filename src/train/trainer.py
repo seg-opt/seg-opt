@@ -4,11 +4,15 @@ from pathlib import Path
 
 import lightning as L
 import torch
+from lightning.pytorch import Callback
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
 )
 from torch import nn
+
+from src.train.profiling import GpuStatsCallback
+from src.utils.logging import make_wandb_logger
 
 
 class TrainerModule(L.LightningModule):
@@ -16,10 +20,10 @@ class TrainerModule(L.LightningModule):
 
     def __init__(
         self,
-        teacher: nn.Module,
+        teacher: nn.Module | None,
         student: nn.Module,
         task_loss: nn.Module,
-        distillation_loss: nn.Module,
+        distillation_loss: nn.Module | None,
         task_weight: float = 1.0,
         distillation_weight: float = 1.0,
         learning_rate: float = 3e-4,
@@ -36,7 +40,10 @@ class TrainerModule(L.LightningModule):
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
 
-        self.teacher.requires_grad_(False)
+        if self.teacher is not None:
+            self.teacher.requires_grad_(False)
+        if self.distillation_weight and self.teacher is None:
+            raise ValueError("a teacher is required when distillation_weight is non-zero")
 
         self.save_hyperparameters(
             ignore=[
@@ -51,7 +58,8 @@ class TrainerModule(L.LightningModule):
         return self.student(inputs)
 
     def on_train_epoch_start(self) -> None:
-        self.teacher.eval()
+        if self.teacher is not None:
+            self.teacher.eval()
 
     def shared_step(
         self,
@@ -61,11 +69,14 @@ class TrainerModule(L.LightningModule):
         targets = batch["labels"]
         student_logits = self.student(inputs)
 
-        with torch.no_grad():
-            teacher_logits = self.teacher(inputs)
-
+        # todo make abstraction on this loss so it can be easily changed
         task_loss = self.task_loss(student_logits, targets)
-        kd_loss = self.distillation_loss(student_logits, teacher_logits)
+        if self.distillation_weight:
+            with torch.no_grad():
+                teacher_logits = self.teacher(inputs)
+            kd_loss = self.distillation_loss(student_logits, teacher_logits)
+        else:
+            kd_loss = task_loss.new_zeros(())
         loss = self.task_weight * task_loss + self.distillation_weight * kd_loss
 
         metrics = {
@@ -153,7 +164,24 @@ def create_trainer(
     precision: str = "32-true",
     devices: int | list[int] | str = "auto",
     log_every_n_steps: int = 50,
+    profile: bool = False,
+    profiler=None,
+    fast_dev_run: bool = False,
 ) -> L.Trainer:
+    output_dir = Path(output_dir)
+    callbacks: list[Callback] = [
+        ModelCheckpoint(
+            dirpath=output_dir / "checkpoints",
+            monitor="val/loss",
+            mode="min",
+            save_top_k=2,
+            save_last=True,
+        ),
+        LearningRateMonitor(logging_interval="step"),
+    ]
+    if profile:
+        callbacks.append(GpuStatsCallback(every_n_steps=log_every_n_steps))
+
     return L.Trainer(
         default_root_dir=output_dir,
         accelerator="auto",
@@ -162,13 +190,8 @@ def create_trainer(
         precision=precision,
         gradient_clip_val=1.0,
         log_every_n_steps=log_every_n_steps,
-        callbacks=[
-            ModelCheckpoint(
-                monitor="val/loss",
-                mode="min",
-                save_top_k=2,
-                save_last=True,
-            ),
-            LearningRateMonitor(logging_interval="step"),
-        ],
+        callbacks=callbacks,
+        logger=make_wandb_logger(output_dir),
+        profiler=profiler,
+        fast_dev_run=fast_dev_run,
     )

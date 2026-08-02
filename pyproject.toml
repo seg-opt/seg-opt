@@ -12,6 +12,9 @@ dependencies = [
     "pyyaml>=6.0.2",
     "scikit-learn>=1.6.1",
     "torch>=2.8.0",
+    "torchvision>=0.23,<0.24",
+    "transformers>=4.56,<5",
+    "wandb>=0.19,<1",
 ]
 
 [dependency-groups]

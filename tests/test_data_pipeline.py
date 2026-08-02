@@ -25,15 +25,12 @@ class RecordingProcessor:
     def __init__(self):
         self.batch_sizes = []
 
-    def __call__(self, images, segmentation_maps, return_tensors):
+    def __call__(self, images, return_tensors):
         assert return_tensors == "pt"
         self.batch_sizes.append(len(images))
         return {
             "pixel_values": torch.stack(
                 [torch.from_numpy(image.copy()).permute(2, 0, 1).float() for image in images]
-            ),
-            "labels": torch.stack(
-                [torch.from_numpy(mask.copy()) for mask in segmentation_maps]
             ),
         }
 
@@ -139,7 +136,7 @@ def test_dataloader_policies_seed_and_device_transfer():
 
 def test_configured_real_dataset_and_print_entries():
     """Validate the real dataset; run pytest with -s to display sample summaries."""
-    config = load_config("configs/distill_mask2former_resnet_v1.yaml").data
+    config = load_config("experiments/baseline_resnet34/config.yaml").data
     root = Path(config.dataset_root)
 
     assert root.is_dir()
