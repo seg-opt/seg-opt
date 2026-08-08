@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from typing import Sequence
+
 from torch import nn
 
+from src.models.processors import DINOv3SegmentationProcessor
 from src.models.segmentation import (
     BackboneSegmenter,
+    DINOv3Segmenter,
     QuerySegmenter,
 )
 
@@ -22,7 +25,17 @@ def load_dinov3(
     num_classes: int,
     freeze_backbone: bool = True,
 ) -> tuple[nn.Module, object]:
-    raise NotImplementedError("DINOv3 segmentation loader is not implemented yet")
+    """Load a pretrained DINOv3 backbone with a new linear segmentation head."""
+    from transformers import AutoImageProcessor, AutoModel
+
+    backbone = AutoModel.from_pretrained(model_id)
+    image_processor = AutoImageProcessor.from_pretrained(model_id)
+    model = DINOv3Segmenter(
+        backbone=backbone,
+        num_classes=num_classes,
+        freeze_backbone=freeze_backbone,
+    )
+    return model, DINOv3SegmentationProcessor(image_processor)
 
 
 def load_sam3(
