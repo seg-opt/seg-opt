@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Submit with: sbatch --account=<grant-id> --export=ALL,IMAGE_PATH=<path> jobs/container_cpu.sbatch
-#SBATCH --partition=proxima
+#SBATCH --partition=proxima-cpu
 #SBATCH --time=00:10:00
 #SBATCH --mem=4G
 #SBATCH --job-name=seg-opt-container-cpu

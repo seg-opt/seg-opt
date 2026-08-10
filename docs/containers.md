@@ -102,9 +102,10 @@ sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
 ```
 
 Set `REPO_PATH` to the checked-out source and `DATA_PATH` to grant-backed data.
-They are mounted as `/workspace` and `/data`. The GPU template requests one H100
-and uses `--nv`; do not load a host CUDA module for this image. The host NVIDIA
-driver is injected while user-space CUDA comes from the container.
+They are mounted as `/workspace` and `/data`. The CPU template uses
+`proxima-cpu`. The GPU template requests one H100 on `proxima` and uses `--nv`;
+do not load a host CUDA module for this image. The host NVIDIA driver is injected
+while user-space CUDA comes from the container.
 
 The initial templates are single-node only. Multi-node MPI requires PCSS's
 separate `srun --mpi pmix` and binding setup and should be added with the actual
