@@ -71,6 +71,8 @@ fi
 
 # Load the env file, stripping any CR so Windows-edited files work too.
 set -a
+# The selected ignored dotenv file is intentionally dynamic.
+# shellcheck disable=SC1090
 . <(tr -d '\r' < "$env_file")
 set +a
 
@@ -82,6 +84,10 @@ set +a
 # stays relative to $HOME on the cluster: project_data is a symlink whose physical
 # mount can change, so we never hardcode it.
 : "${SERVICE_ID:?SERVICE_ID is not set in .env.$env_name}"
+[[ $SERVICE_ID =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "error: invalid SERVICE_ID" >&2
+  exit 1
+}
 
 # --out-path is always interpreted inside project_data; reject anything that
 # would climb out of it, and tolerate stray slashes.
@@ -91,6 +97,10 @@ if [[ $out_path == /* ]]; then
 fi
 if [[ $out_path == ".." || $out_path == "../"* || $out_path == *"/../"* || $out_path == *"/.." ]]; then
   echo "error: --out-path must stay inside project_data, got '$out_path'" >&2
+  exit 1
+fi
+if [[ ! $out_path =~ ^[A-Za-z0-9._/-]*$ ]]; then
+  echo "error: --out-path contains unsupported characters: $out_path" >&2
   exit 1
 fi
 out_path=${out_path%/}
@@ -112,6 +122,10 @@ ssh_opts=(
 )
 remote="$USERNAME@$CLUSTER_ADDRESS"
 name=$(basename "$local_file")
+[[ $name =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "error: filename contains unsupported characters: $name" >&2
+  exit 1
+}
 total_bytes=$(wc -c < "$local_file" | tr -d '[:space:]')
 
 # Bytes -> human units. numfmt isn't everywhere (macOS), so do it by hand.
@@ -131,8 +145,9 @@ progress_monitor() {
   local interval=${PROGRESS_INTERVAL:-10}
   local prev=0 sent elapsed=0 delta rate eta pct
   while sleep "$interval"; do
-    sent=$(ssh "${ssh_opts[@]}" "$remote" \
-      "stat -c %s -- \"$remote_dir/$name\" 2>/dev/null || echo 0" 2>/dev/null) || sent=""
+    sent=$(printf '%s\0' "$remote_dir/$name" | ssh "${ssh_opts[@]}" "$remote" \
+      'read -r -d "" path; stat -c %s -- "$path" 2>/dev/null || echo 0' \
+      2>/dev/null) || sent=""
     [[ $sent =~ ^[0-9]+$ ]] || continue
     elapsed=$((elapsed + interval))
     delta=$((sent - prev))
@@ -152,7 +167,8 @@ progress_monitor() {
 
 echo "==> uploading $name ($(human "$total_bytes")) to $remote:$remote_dir/ [env: $env_name]"
 
-ssh "${ssh_opts[@]}" "$remote" "mkdir -p -- \"$remote_dir\""
+printf '%s\0' "$remote_dir" | ssh "${ssh_opts[@]}" "$remote" \
+  'read -r -d "" path; mkdir -p -- "$path"'
 
 # On a terminal, let the transfer tool draw its own live meter; otherwise poll
 # the remote size ourselves so a logged run still reports how far it got.
@@ -195,7 +211,8 @@ fi
 
 if [[ -n "$local_sum" ]]; then
   echo "==> verifying checksum"
-  remote_sum=$(ssh "${ssh_opts[@]}" "$remote" "sha256sum -- \"$remote_dir/$name\" | cut -d' ' -f1")
+  remote_sum=$(printf '%s\0' "$remote_dir/$name" | ssh "${ssh_opts[@]}" "$remote" \
+    'read -r -d "" path; sha256sum -- "$path"' | cut -d' ' -f1)
   if [[ "$local_sum" != "$remote_sum" ]]; then
     echo "error: checksum mismatch for $name" >&2
     echo "  local:  $local_sum" >&2

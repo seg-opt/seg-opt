@@ -163,6 +163,9 @@ venv.bak/
 results/*
 !results/.gitkeep
 
+# Project-local state created by the VS Code Ansible extension.
+.ansible/
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -81,6 +81,22 @@ scancel <job_id>         # cancel a job
 sinfo -p tesla           # partition/node availability
 ```
 
+## Container jobs
+
+The shared Singularity setup uses the `proxima` partition, which is the
+partition currently documented by PCSS for container execution. This differs
+from the direct host examples above, which use `standard` or `tesla`.
+
+Versioned SIF images live under:
+
+```text
+~/<grant-id>/project_data/containers/seg-opt/images/<version>/
+```
+
+Do not keep container images or caches directly in the approximately 1 GB home
+directory. Follow [the container runbook](containers.md) for one-time storage
+setup, deployment, CPU/GPU templates, and rollback.
+
 ## Which grant to use
 
 - **`pl1200-01` (scientific)** — use for the shared project so collaborators
