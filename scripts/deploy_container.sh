@@ -4,10 +4,11 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/deploy_container.sh --file <image.sif> --version <version> [--env prod|test]
+Usage: scripts/deploy_container.sh --file <image.sif> --version <version> [--kind diagnostic|development] [--env prod|test]
 
 The SIF is uploaded to:
-  ~/<SERVICE_ID>/project_data/containers/seg-opt/images/<version>/
+  diagnostic:  ~/<SERVICE_ID>/project_data/containers/seg-opt/images/<version>/
+  development: ~/<SERVICE_ID>/project_data/containers/seg-opt/development/images/<version>/
 USAGE
 }
 
@@ -16,11 +17,13 @@ root_dir=$(cd "$script_dir/.." && pwd)
 env_name=prod
 image_file=
 version=
+kind=diagnostic
 
 while (($#)); do
   case $1 in
     --file) image_file=${2:?missing value for $1}; shift 2 ;;
     --version) version=${2:?missing value for $1}; shift 2 ;;
+    --kind) kind=${2:?missing value for $1}; shift 2 ;;
     --env) env_name=${2:?missing value for $1}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "error: unexpected argument '$1'" >&2; usage >&2; exit 1 ;;
@@ -36,6 +39,10 @@ done
 case $env_name in
   prod|test) ;;
   *) echo "error: --env must be 'prod' or 'test'" >&2; exit 1 ;;
+esac
+case $kind in
+  diagnostic|development) ;;
+  *) echo "error: --kind must be 'diagnostic' or 'development'" >&2; exit 1 ;;
 esac
 
 env_file="$root_dir/.env.$env_name"
@@ -63,7 +70,11 @@ name=$(basename "$image_file")
   exit 1
 }
 expected_sum=$(sha256sum < "$image_file" | cut -d' ' -f1)
-remote_subdir="containers/seg-opt/images/$version"
+container_subdir=containers/seg-opt
+if [[ $kind == development ]]; then
+  container_subdir+=/development
+fi
+remote_subdir="$container_subdir/images/$version"
 remote_dir="$SERVICE_ID/project_data/$remote_subdir"
 
 key=$(mktemp)
@@ -106,13 +117,17 @@ else
   echo "==> immutable image already present with matching checksum; skipping upload"
 fi
 
-echo "==> verifying and promoting $version on Eagle"
-ssh "${ssh_opts[@]}" "$remote" bash -s -- "$SERVICE_ID" "$version" "$name" <<'REMOTE'
+echo "==> verifying and promoting $kind image $version on Eagle"
+ssh "${ssh_opts[@]}" "$remote" bash -s -- "$SERVICE_ID" "$kind" "$version" "$name" <<'REMOTE'
 set -euo pipefail
 service_id=$1
-version=$2
-name=$3
+kind=$2
+version=$3
+name=$4
 root="$HOME/$service_id/project_data/containers/seg-opt"
+if [[ $kind == development ]]; then
+  root+=/development
+fi
 image="$root/images/$version/$name"
 
 cd "$(dirname "$image")"

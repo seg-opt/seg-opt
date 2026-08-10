@@ -59,15 +59,31 @@ fi
 
 root="$HOME/$service_id/project_data/containers/seg-opt"
 umask 0002
-mkdir -p "$root/images" "$root/cache/$USER" "$root/tmp/$USER"
-chmod g+rwx "$root" "$root/images" "$root/cache" "$root/tmp" 2>/dev/null || true
+mkdir -p \
+  "$root/images" \
+  "$root/cache/$USER" \
+  "$root/tmp/$USER" \
+  "$root/development/images" \
+  "$root/development/cache/$USER" \
+  "$root/development/tmp/$USER"
+chmod g+rwx \
+  "$root" "$root/images" "$root/cache" "$root/tmp" \
+  "$root/development" "$root/development/images" \
+  "$root/development/cache" "$root/development/tmp" \
+  2>/dev/null || true
 test -w "$root/images"
 test -w "$root/cache/$USER"
 test -w "$root/tmp/$USER"
+test -w "$root/development/images"
+test -w "$root/development/cache/$USER"
+test -w "$root/development/tmp/$USER"
 
 echo "images:  $root/images"
 echo "cache:   $root/cache/$USER"
 echo "temp:    $root/tmp/$USER"
+echo "development images: $root/development/images"
+echo "development cache:  $root/development/cache/$USER"
+echo "development temp:   $root/development/tmp/$USER"
 echo
 echo "Add these exports to jobs that pull or convert images:"
 echo "export SINGULARITY_CACHEDIR=\"$root/cache/$USER\""

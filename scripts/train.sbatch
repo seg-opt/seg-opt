@@ -1,79 +1,55 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=seg-opt-profile
-#SBATCH --account=pl1200-01
-#SBATCH --partition=tesla
+# Submit with: sbatch --account=<grant-id> --export=ALL,IMAGE_PATH,DATA_PATH scripts/train.sbatch
+#SBATCH --job-name=seg-opt-train
+#SBATCH --partition=proxima
 #SBATCH --constraint=h100
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=04:00:00
-#SBATCH --output=results/slurm-%x-%j.out
-#SBATCH --error=results/slurm-%x-%j.err
+#SBATCH --output=seg-opt-train-%j.out
+#SBATCH --error=seg-opt-train-%j.err
 
 set -euo pipefail
 
-# Keep code, artifacts, and caches out of the small login-node home filesystem.
-GRANT_DIR="$HOME/pl1200-01/project_data"
-PROJECT_DIR="$GRANT_DIR/$USER/seg-opt"
-CACHE_DIR="$PROJECT_DIR/.cache"
-JOB_TMP="$HOME/grant_${SLURM_JOB_ACCOUNT}/scratch/$USER/$SLURM_JOB_ID"
+: "${IMAGE_PATH:?Set IMAGE_PATH to an immutable development SIF path}"
+: "${DATA_PATH:?Set DATA_PATH to the grant-backed datasets directory}"
 
-CONFIG="experiments/baseline_resnet34/config.yaml"
-PROFILER_DIR="$JOB_TMP/profiler"
+runtime=$(command -v singularity || command -v apptainer || true)
+[[ -n $runtime ]] || { echo "error: Singularity/Apptainer is unavailable" >&2; exit 1; }
 
-mkdir -p \
-    "$CACHE_DIR/huggingface" \
-    "$CACHE_DIR/torch" \
-    "$CACHE_DIR/wandb" \
-    "$CACHE_DIR/xdg" \
-    "$PROJECT_DIR/results" \
-    "$PROFILER_DIR" \
-    "$JOB_TMP"
+repo_path=${REPO_PATH:-$PWD}
+cache_path=${CACHE_PATH:-$HOME/$SLURM_JOB_ACCOUNT/project_data/containers/seg-opt/development/cache/$USER}
+output_path=${OUTPUT_PATH:-$repo_path/results}
+job_tmp="$cache_path/tmp/$SLURM_JOB_ID"
 
-# Keep framework and model downloads on grant storage.
-export HF_HOME="$CACHE_DIR/huggingface"
-export HUGGINGFACE_HUB_CACHE="$CACHE_DIR/huggingface/hub"
-export TRANSFORMERS_CACHE="$CACHE_DIR/huggingface/transformers"
-export TORCH_HOME="$CACHE_DIR/torch"
-export XDG_CACHE_HOME="$CACHE_DIR/xdg"
-export WANDB_CACHE_DIR="$CACHE_DIR/wandb/cache"
-export WANDB_CONFIG_DIR="$CACHE_DIR/wandb/config"
-export WANDB_DATA_DIR="$CACHE_DIR/wandb/data"
-export WANDB_PROJECT="seg-opt"
-export TMPDIR="$JOB_TMP"
-export PYTHONUNBUFFERED=1
-export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
+[[ -d $repo_path ]] || { echo "error: repository not found: $repo_path" >&2; exit 1; }
+[[ -d $DATA_PATH ]] || { echo "error: dataset directory not found: $DATA_PATH" >&2; exit 1; }
+mkdir -p "$cache_path" "$output_path" "$job_tmp"
 
-if [[ ! -d "$PROJECT_DIR" ]]; then
-    echo "Project directory not found: $PROJECT_DIR" >&2
-    exit 1
+if (($# == 0)); then
+    set -- python -m scripts.train \
+        --config experiments/baseline_resnet34/config.yaml \
+        --devices 1
 fi
-if [[ ! -x "$PROJECT_DIR/.venv/bin/python" ]]; then
-    echo "Virtual environment not found: $PROJECT_DIR/.venv" >&2
-    echo "Run 'uv sync --frozen' in the project directory first." >&2
-    exit 1
-fi
-if [[ ! -d "$GRANT_DIR/datasets/artificial_lunar_landscape" ]]; then
-    echo "Dataset not found under $GRANT_DIR/datasets" >&2
-    exit 1
-fi
-
-cd "$PROJECT_DIR"
-source .venv/bin/activate
 
 echo "Job:       $SLURM_JOB_ID"
 echo "Node:      $(hostname)"
-echo "Project:   $PROJECT_DIR"
-echo "Python:    $(command -v python)"
-echo "Cache:     $CACHE_DIR"
-echo "Profiler:  $PROFILER_DIR"
+echo "Image:     $IMAGE_PATH"
+echo "Project:   $repo_path"
+echo "Dataset:   $DATA_PATH"
+echo "Cache:     $cache_path"
+echo "Output:    $output_path"
 echo "Started:   $(date --iso-8601=seconds)"
-nvidia-smi
 
-srun python -m scripts.train \
-    --config "$CONFIG" \
-    --devices 1 \
-    --profile \
-    --profiler-dir "$PROFILER_DIR"
+export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
+srun "$runtime" exec --nv --pwd /workspace \
+    --bind "$repo_path:/workspace:ro" \
+    --bind "$DATA_PATH:/data:ro" \
+    --bind "$DATA_PATH:/datasets:ro" \
+    --bind "$cache_path:/cache" \
+    --bind "$output_path:/output" \
+    --bind "$output_path:/workspace/results" \
+    "$IMAGE_PATH" "$@"
 
 echo "Finished: $(date --iso-8601=seconds)"
