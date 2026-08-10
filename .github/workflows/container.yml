@@ -101,7 +101,7 @@ jobs:
           apptainer inspect "dist/${artifact_name}.sif"
           apptainer exec "dist/${artifact_name}.sif" python3 /opt/seg-opt/smoke_test.py
           (cd dist && sha256sum "${artifact_name}.sif" > "${artifact_name}.sif.sha256")
-          sha256sum --check "dist/${artifact_name}.sif.sha256"
+          (cd dist && sha256sum --check "${artifact_name}.sif.sha256")
           printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
