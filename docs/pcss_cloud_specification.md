@@ -44,3 +44,18 @@ PyTorch, per CUDA channel:
 
 **Recommendation: `torch 2.13.0` on the `cu130` (or `cu132`) channel** — the
 highest available PyTorch, on the CUDA channel that matches the 13.2 driver:
+
+## Container runtime
+
+PCSS documents Singularity (also known as Apptainer) for unprivileged container
+execution. The initial project setup targets `proxima`, uses SIF images from
+shared grant storage, and passes `--nv` for NVIDIA GPU jobs. Container jobs do
+not load a host CUDA toolkit module by default: the host driver is exposed to
+the container and the pinned image supplies CUDA 13.0.2 user-space libraries.
+
+The exact runtime command and version can change independently of this
+repository. Eagle exposes the runtime on allocated compute nodes rather than the
+login node. SLURM jobs detect `singularity` first, fall back to `apptainer`, and
+fail if neither is available.
+
+See [the container runbook](containers.md) for the complete workflow.

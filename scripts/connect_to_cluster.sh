@@ -14,6 +14,8 @@ fi
 
 # Load .env.test, stripping any CR so Windows-edited files work too.
 set -a
+# The ignored dotenv path is resolved above and intentionally dynamic.
+# shellcheck disable=SC1090
 . <(tr -d '\r' < "$env_file")
 set +a
 
