@@ -21,11 +21,12 @@ runtime=$(command -v singularity || command -v apptainer || true)
 repo_path=${REPO_PATH:-$PWD}
 cache_path=${CACHE_PATH:-$HOME/$SLURM_JOB_ACCOUNT/project_data/containers/seg-opt/development/cache/$USER}
 output_path=${OUTPUT_PATH:-$repo_path/results}
-job_tmp="$cache_path/tmp/$SLURM_JOB_ID"
+job_tmp="${SLURM_TMPDIR:-/tmp}/seg-opt-$SLURM_JOB_ID"
 
 [[ -d $repo_path ]] || { echo "error: repository not found: $repo_path" >&2; exit 1; }
 [[ -d $DATA_PATH ]] || { echo "error: dataset directory not found: $DATA_PATH" >&2; exit 1; }
 mkdir -p "$cache_path" "$output_path" "$job_tmp"
+trap 'rm -rf "$job_tmp"' EXIT
 
 if (($# == 0)); then
     set -- python -m scripts.train \
@@ -43,7 +44,7 @@ echo "Output:    $output_path"
 echo "Started:   $(date --iso-8601=seconds)"
 
 export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
-container_tmp="/cache/tmp/$SLURM_JOB_ID"
+container_tmp="/tmp"
 srun env \
     SINGULARITYENV_TMPDIR="$container_tmp" \
     APPTAINERENV_TMPDIR="$container_tmp" \
@@ -52,6 +53,7 @@ srun env \
     --bind "$DATA_PATH:/data:ro" \
     --bind "$DATA_PATH:/datasets:ro" \
     --bind "$cache_path:/cache" \
+    --bind "$job_tmp:/tmp" \
     --bind "$output_path:/output" \
     --bind "$output_path:/workspace/results" \
     "$IMAGE_PATH" "$@"
