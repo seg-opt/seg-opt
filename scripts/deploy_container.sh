@@ -113,9 +113,9 @@ if [[ -n $existing_sum && $existing_sum != "$expected_sum" ]]; then
 fi
 
 if [[ -z $existing_sum ]]; then
-  "$script_dir/upload_file_to_cluster.sh" \
+  bash "$script_dir/upload_file_to_cluster.sh" \
     --file "$image_file" --env "$env_name" --out-path "$remote_subdir"
-  "$script_dir/upload_file_to_cluster.sh" \
+  bash "$script_dir/upload_file_to_cluster.sh" \
     --file "$checksum_dir/$name.sha256" --env "$env_name" --out-path "$remote_subdir"
 else
   echo "==> immutable image already present with matching checksum; skipping upload"
