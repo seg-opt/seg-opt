@@ -95,7 +95,7 @@ echo "development images: $root/development/images"
 echo "development cache:  $root/development/cache/$USER"
 echo "development temp:   $root/development/tmp/$USER"
 echo
-echo "Add these exports to jobs that pull or convert images:"
+echo "Add these exports to jobs that use Singularity caches:"
 echo "export SINGULARITY_CACHEDIR=\"$root/cache/$USER\""
 echo "export SINGULARITY_TMPDIR=\"$root/tmp/$USER\""
 REMOTE

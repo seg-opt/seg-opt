@@ -82,35 +82,23 @@ bash scripts/deploy_container.sh \
 
 Deployment verifies hashes locally and remotely, refuses to replace a different image under an existing version, and atomically updates `current.sif`. Repeating the same deployment is safe. Singularity is available on Eagle compute nodes rather than the login node, so the SLURM smoke jobs perform runtime validation.
 
-### Direct registry deployment
+### Development deployment
 
-For development images, prefer pulling directly from GHCR on an Eagle worker instead of downloading a multi-gigabyte SIF locally and uploading it again. First manually dispatch the development-container workflow so it publishes its immutable `dep-sha-<commit>` OCI tag; pull-request runs validate images but deliberately do not publish them.
-
-For a private GHCR package, log in interactively on Eagle once. Enter the `read:packages` GitHub token directly at the prompt; never put it in a repository file, shell history, or SLURM script:
+Eagle compute nodes cannot currently reach public OCI registries, including Docker Hub and GHCR. Download the checksummed SIF artifact from the successful development-container workflow on a machine with GitHub access, then deploy it over SSH. The upload is resumable and verifies the checksum locally and on Eagle.
 
 ```bash
-ssh -tt laskus@eagle.man.poznan.pl \
-  'srun --account=pl1200-01 --partition=proxima-cpu --mem=4G --time=00:10:00 singularity registry login --username <github-user> docker://ghcr.io'
+env -u GITHUB_TOKEN gh run download <RUN_ID> \
+  --name seg-opt-development-dep-sha-<commit> \
+  --dir dist/development-<commit>
+sha256sum --check dist/development-<commit>/*.sif.sha256
 ```
 
-Then run this from the checkout with an unlocked local `ssh-agent`:
-
-```bash
-bash scripts/pull_container_on_cluster.sh \
-  --image docker://ghcr.io/seg-opt/seg-opt-development:dep-sha-<commit> \
-  --version dep-sha-<commit> \
-  --kind development \
-  --env prod
-```
-
-The script requests a `proxima-cpu` worker, converts the OCI image directly into grant storage, writes and verifies a SHA-256 checksum, and atomically updates `containers/seg-opt/development/current.sif`.
-
-Deploy a development release into its independent namespace:
+Deploy the development SIF into its independent namespace:
 
 ```bash
 bash scripts/deploy_container.sh \
-  --file dist/dev-v0.1.0/seg-opt-development-dev-v0.1.0.sif \
-  --version dev-v0.1.0 \
+  --file dist/development-<commit>/seg-opt-development-dep-sha-<commit>.sif \
+  --version dep-sha-<commit> \
   --kind development \
   --env prod
 ```
