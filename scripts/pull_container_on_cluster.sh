@@ -97,7 +97,17 @@ image=$4
 export SINGULARITY_CACHEDIR="$cache" SINGULARITY_TMPDIR="$temporary"
 temporary_target="${target}.partial.$$"
 trap 'rm -f "$temporary_target"' EXIT
-singularity pull "$temporary_target" "$image"
+for attempt in 1 2 3; do
+  rm -f "$temporary_target"
+  if singularity pull "$temporary_target" "$image"; then
+    break
+  fi
+  if ((attempt == 3)); then
+    echo "error: failed to pull $image after $attempt attempts" >&2
+    exit 1
+  fi
+  echo "warning: retrying registry pull after failed attempt $attempt" >&2
+done
 sha256sum "$temporary_target" > "${temporary_target}.sha256"
 mv "$temporary_target" "$target"
 mv "${temporary_target}.sha256" "${target}.sha256"
