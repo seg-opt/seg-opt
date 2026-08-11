@@ -7,8 +7,9 @@
 #                                          [--out-path <subdir>]
 #
 #   --file      Path to the local file to upload. Required; any file type.
-#   --env       Which env file supplies SSH_KEY, USERNAME, CLUSTER_ADDRESS and
-#               SERVICE_ID: "prod" -> .env.prod, "test" -> .env.test.
+#   --env       Which env file supplies USERNAME, CLUSTER_ADDRESS and SERVICE_ID:
+#               "prod" -> .env.prod, "test" -> .env.test. SSH_KEY is optional
+#               when an unlocked ssh-agent is available.
 #               Defaults to prod.
 #   --out-path  Subfolder inside the grant's project_data. Optional and always
 #               relative, so the upload lands in
@@ -78,7 +79,6 @@ set +a
 
 : "${USERNAME:?USERNAME is not set in .env.$env_name}"
 : "${CLUSTER_ADDRESS:?CLUSTER_ADDRESS is not set in .env.$env_name}"
-: "${SSH_KEY:?SSH_KEY is not set in .env.$env_name}"
 
 # Home is only ~1 GB, so data goes under the grant named by SERVICE_ID. The path
 # stays relative to $HOME on the cluster: project_data is a symlink whose physical
@@ -107,19 +107,24 @@ out_path=${out_path%/}
 
 remote_dir="$SERVICE_ID/project_data${out_path:+/$out_path}"
 
-key=$(mktemp)
-chmod 600 "$key"
-printf '%s\n' "$SSH_KEY" > "$key"
-trap 'rm -f "$key"; [[ -n ${monitor_pid:-} ]] && kill "$monitor_pid" 2>/dev/null' EXIT
+key=
+trap '[[ -z $key ]] || rm -f "$key"; [[ -n ${monitor_pid:-} ]] && kill "$monitor_pid" 2>/dev/null' EXIT
 
 # BatchMode: never hang on a prompt. accept-new: trust the login node the first
 # time but still detect a changed host key later.
 ssh_opts=(
-  -i "$key"
-  -o IdentitiesOnly=yes
   -o BatchMode=yes
   -o StrictHostKeyChecking=accept-new
 )
+if [[ -n ${SSH_KEY:-} ]]; then
+  key=$(mktemp)
+  chmod 600 "$key"
+  printf '%s\n' "$SSH_KEY" > "$key"
+  ssh_opts=(-i "$key" -o IdentitiesOnly=yes "${ssh_opts[@]}")
+elif [[ -z ${SSH_AUTH_SOCK:-} ]] || ! ssh-add -l >/dev/null 2>&1; then
+  echo "error: set SSH_KEY in .env.$env_name or unlock an SSH key with ssh-add" >&2
+  exit 1
+fi
 remote="$USERNAME@$CLUSTER_ADDRESS"
 name=$(basename "$local_file")
 [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || {

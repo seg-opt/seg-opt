@@ -53,7 +53,6 @@ set -a
 . <(tr -d '\r' < "$env_file")
 set +a
 
-: "${SSH_KEY:?SSH_KEY is not set in .env.$env_name}"
 : "${USERNAME:?USERNAME is not set in .env.$env_name}"
 : "${CLUSTER_ADDRESS:?CLUSTER_ADDRESS is not set in .env.$env_name}"
 : "${SERVICE_ID:?SERVICE_ID is not set in .env.$env_name}"
@@ -77,19 +76,24 @@ fi
 remote_subdir="$container_subdir/images/$version"
 remote_dir="$SERVICE_ID/project_data/$remote_subdir"
 
-key=$(mktemp)
 checksum_dir=$(mktemp -d)
-chmod 600 "$key"
-printf '%s\n' "$SSH_KEY" > "$key"
 printf '%s  %s\n' "$expected_sum" "$name" > "$checksum_dir/$name.sha256"
-trap 'rm -f "$key"; rm -rf "$checksum_dir"' EXIT
+key=
+trap '[[ -z $key ]] || rm -f "$key"; rm -rf "$checksum_dir"' EXIT
 
 ssh_opts=(
-  -i "$key"
-  -o IdentitiesOnly=yes
   -o BatchMode=yes
   -o StrictHostKeyChecking=accept-new
 )
+if [[ -n ${SSH_KEY:-} ]]; then
+  key=$(mktemp)
+  chmod 600 "$key"
+  printf '%s\n' "$SSH_KEY" > "$key"
+  ssh_opts=(-i "$key" -o IdentitiesOnly=yes "${ssh_opts[@]}")
+elif [[ -z ${SSH_AUTH_SOCK:-} ]] || ! ssh-add -l >/dev/null 2>&1; then
+  echo "error: set SSH_KEY in .env.$env_name or unlock an SSH key with ssh-add" >&2
+  exit 1
+fi
 remote="$USERNAME@$CLUSTER_ADDRESS"
 
 existing_sum=$(ssh "${ssh_opts[@]}" "$remote" bash -s -- "$remote_dir" "$name" <<'REMOTE'
