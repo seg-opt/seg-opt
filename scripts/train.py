@@ -119,7 +119,11 @@ def main():
     )
     log.info("Starting training%s", " with profiling" if args.profile else "")
     trainer.fit(module, train_dataloaders=loaders[0], val_dataloaders=loaders[1])
-    trainer.test(module, dataloaders=loaders[2], ckpt_path="best")
+    trainer.test(
+        module,
+        dataloaders=loaders[2],
+        ckpt_path=None if args.fast_dev_run else "best",
+    )
     log.info("Training complete; artifacts written to %s", output_dir.resolve())
 
 

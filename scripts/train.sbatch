@@ -43,7 +43,7 @@ echo "Output:    $output_path"
 echo "Started:   $(date --iso-8601=seconds)"
 
 export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
-srun "$runtime" exec --nv --pwd /workspace \
+srun env TMPDIR="/cache/tmp/$SLURM_JOB_ID" "$runtime" exec --nv --pwd /workspace \
     --bind "$repo_path:/workspace:ro" \
     --bind "$DATA_PATH:/data:ro" \
     --bind "$DATA_PATH:/datasets:ro" \
