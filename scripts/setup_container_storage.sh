@@ -35,19 +35,29 @@ set -a
 . <(tr -d '\r' < "$env_file")
 set +a
 
-: "${SSH_KEY:?SSH_KEY is not set in .env.$env_name}"
 : "${USERNAME:?USERNAME is not set in .env.$env_name}"
 : "${CLUSTER_ADDRESS:?CLUSTER_ADDRESS is not set in .env.$env_name}"
 : "${SERVICE_ID:?SERVICE_ID is not set in .env.$env_name}"
 [[ $SERVICE_ID =~ ^[A-Za-z0-9._-]+$ ]] || { echo "error: invalid SERVICE_ID" >&2; exit 1; }
 
-key=$(mktemp)
-chmod 600 "$key"
-printf '%s\n' "$SSH_KEY" > "$key"
-trap 'rm -f "$key"' EXIT
+key=
+trap '[[ -z $key ]] || rm -f "$key"' EXIT
 
-ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes \
-  -o StrictHostKeyChecking=accept-new "$USERNAME@$CLUSTER_ADDRESS" \
+ssh_opts=(
+  -o BatchMode=yes
+  -o StrictHostKeyChecking=accept-new
+)
+if [[ -n ${SSH_KEY:-} ]]; then
+  key=$(mktemp)
+  chmod 600 "$key"
+  printf '%s\n' "$SSH_KEY" > "$key"
+  ssh_opts=(-i "$key" -o IdentitiesOnly=yes "${ssh_opts[@]}")
+elif [[ -z ${SSH_AUTH_SOCK:-} ]] || ! ssh-add -l >/dev/null 2>&1; then
+  echo "error: set SSH_KEY in .env.$env_name or unlock an SSH key with ssh-add" >&2
+  exit 1
+fi
+
+ssh "${ssh_opts[@]}" "$USERNAME@$CLUSTER_ADDRESS" \
   bash -s -- "$SERVICE_ID" <<'REMOTE'
 set -euo pipefail
 service_id=$1
