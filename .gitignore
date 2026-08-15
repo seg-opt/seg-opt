@@ -159,6 +159,10 @@ venv.bak/
 .env.*
 !.env.example
 
+# Runtime artifacts. Experiment definitions belong in experiments/.
+results/*
+!results/.gitkeep
+
 # Project-local state created by the VS Code Ansible extension.
 .ansible/
 
