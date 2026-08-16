@@ -8,6 +8,7 @@ from torch import nn
 from src.models import (
     DINOv3SegmentationProcessor,
     DINOv3Segmenter,
+    FastSCNN,
     load_dinov3,
     load_sam3,
     load_student,
@@ -144,6 +145,26 @@ def test_student_loader_builds_mobilenet_segmenter():
         logits = model(torch.randn(1, 3, 32, 32))
 
     assert logits.shape == (1, 4, 32, 32)
+
+
+def test_student_loader_builds_fast_scnn_with_full_resolution_logits():
+    model = load_student("fast_scnn", num_classes=4, pretrained=False)
+    inputs = torch.randn(2, 3, 64, 96)
+    targets = torch.randint(0, 4, (2, 64, 96))
+
+    logits = model(inputs)
+    loss = nn.functional.cross_entropy(logits, targets)
+    loss.backward()
+
+    assert isinstance(model, FastSCNN)
+    assert logits.shape == (2, 4, 64, 96)
+    assert torch.isfinite(loss)
+    assert any(parameter.grad is not None for parameter in model.parameters())
+
+
+def test_fast_scnn_rejects_unavailable_pretrained_weights():
+    with pytest.raises(ValueError, match="pretrained=false"):
+        load_student("fast_scnn", num_classes=4, pretrained=True)
 
 
 def test_alternative_teacher_loaders_are_placeholders():

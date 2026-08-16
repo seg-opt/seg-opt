@@ -1,22 +1,319 @@
-from __future__ import annotations
-
+import math
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import lightning as L
 import torch
 from lightning.pytorch import Callback
-from lightning.pytorch.callbacks import (
-    LearningRateMonitor,
-    ModelCheckpoint,
-)
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from torch import nn
 
+from src.models.inference import sliding_window_logits
+from src.train.metrics import SegmentationMetrics
 from src.train.profiling import GpuStatsCallback
 from src.utils.logging import make_wandb_logger
 
 
+def cosine_with_warmup_multiplier(
+    step: int,
+    *,
+    total_steps: int,
+    warmup_steps: int,
+) -> float:
+    """Learning-rate multiplier for linear warmup followed by cosine decay."""
+    step = min(step, total_steps - 1)
+    if warmup_steps and step < warmup_steps:
+        return (step + 1) / warmup_steps
+
+    decay_steps = total_steps - warmup_steps
+    if decay_steps <= 1:
+        return 1.0
+    progress = (step - warmup_steps) / (decay_steps - 1)
+    return 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
+def _unique_trainable(parameters: Iterable[nn.Parameter]) -> list[nn.Parameter]:
+    unique: list[nn.Parameter] = []
+    seen: set[int] = set()
+    for parameter in parameters:
+        if parameter.requires_grad and id(parameter) not in seen:
+            unique.append(parameter)
+            seen.add(id(parameter))
+    return unique
+
+
+def parameter_groups(
+    model: nn.Module,
+    *,
+    head_learning_rate: float,
+    backbone_learning_rate: float | None,
+) -> list[dict[str, Any]]:
+    """Split trainable model parameters into disjoint head/backbone groups."""
+
+    trainable = _unique_trainable(model.parameters())
+    if not trainable:
+        raise ValueError("model has no trainable parameters")
+
+    encoder_getter = getattr(model, "encoder_parameters", None)
+    encoder = _unique_trainable(encoder_getter()) if callable(encoder_getter) else []
+    trainable_ids = {id(parameter) for parameter in trainable}
+    if any(id(parameter) not in trainable_ids for parameter in encoder):
+        raise ValueError("encoder_parameters returned a parameter outside the model")
+
+    encoder_ids = {id(parameter) for parameter in encoder}
+    head = [parameter for parameter in trainable if id(parameter) not in encoder_ids]
+    groups: list[dict[str, Any]] = []
+    if head:
+        groups.append(
+            {
+                "name": "head",
+                "params": head,
+                "lr": head_learning_rate,
+            }
+        )
+    if encoder:
+        if backbone_learning_rate is None or backbone_learning_rate <= 0:
+            raise ValueError(
+                "a positive backbone_learning_rate is required when the model "
+                "exposes trainable encoder parameters"
+            )
+        groups.append(
+            {
+                "name": "backbone",
+                "params": encoder,
+                "lr": backbone_learning_rate,
+            }
+        )
+    return groups
+
+
+class BaselineModule(L.LightningModule):
+    """Supervised Lightning module shared by all segmentation baselines."""
+
+    def __init__(
+        self,
+        model: nn.Module,
+        criterion: nn.Module,
+        *,
+        head_learning_rate: float,
+        backbone_learning_rate: float | None = None,
+        weight_decay: float = 0.0,
+        warmup_fraction: float = 0.05,
+        class_names: Sequence[str],
+        ignore_index: int = 255,
+        total_steps: int | None = None,
+    ) -> None:
+        super().__init__()
+        if not 0 <= warmup_fraction < 1:
+            raise ValueError("warmup_fraction must be in [0, 1)")
+        if total_steps is not None and total_steps <= 0:
+            raise ValueError("total_steps must be positive when provided")
+
+        self.model = model
+        self.criterion = criterion
+        self.head_learning_rate = head_learning_rate
+        self.backbone_learning_rate = backbone_learning_rate
+        self.weight_decay = weight_decay
+        self.warmup_fraction = warmup_fraction
+        self.total_steps = total_steps
+        self.metrics = SegmentationMetrics(class_names, ignore_index)
+        self._latest_metrics: dict[str, dict[str, Any]] = {}
+        self.save_hyperparameters(ignore=["model", "criterion"])
+
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        return self.model(images)
+
+    def _validate_scores(
+        self,
+        scores: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> None:
+        expected = (
+            labels.shape[0],
+            len(self.metrics.class_names),
+            *labels.shape[-2:],
+        )
+        if tuple(scores.shape) != expected:
+            raise ValueError(
+                "model scores must have shape [B, classes, H, W]; "
+                f"expected {expected}, got {tuple(scores.shape)}"
+            )
+
+    def _loss_and_scores(
+        self,
+        images: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        loss_and_scores = getattr(self.model, "loss_and_scores", None)
+        if not callable(loss_and_scores):
+            raise TypeError("baseline model must implement loss_and_scores")
+
+        result = loss_and_scores(images, labels, self.criterion)
+        if not isinstance(result, tuple) or len(result) != 2:
+            raise TypeError("loss_and_scores must return (loss, scores)")
+        loss, scores = result
+        if not isinstance(loss, torch.Tensor) or loss.ndim != 0:
+            raise TypeError("loss_and_scores must return a scalar tensor loss")
+        if not isinstance(scores, torch.Tensor):
+            raise TypeError("loss_and_scores must return tensor scores")
+        self._validate_scores(scores, labels)
+        return loss, scores
+
+    def _log_loss(
+        self,
+        stage: str,
+        loss: torch.Tensor,
+        *,
+        batch_size: int,
+        on_step: bool,
+    ) -> None:
+        self.log(
+            f"{stage}/loss",
+            loss,
+            prog_bar=True,
+            on_step=on_step,
+            on_epoch=True,
+            sync_dist=not on_step,
+            batch_size=batch_size,
+        )
+
+    def training_step(
+        self,
+        batch: dict[str, torch.Tensor],
+        batch_idx: int,
+    ) -> torch.Tensor:
+        images = batch["pixel_values"]
+        labels = batch["labels"]
+        loss, scores = self._loss_and_scores(images, labels)
+        self.metrics.update("train", scores.detach().argmax(dim=1), labels)
+        self._log_loss(
+            "train",
+            loss,
+            batch_size=images.shape[0],
+            on_step=True,
+        )
+        return loss
+
+    def _evaluation_step(
+        self,
+        batch: dict[str, torch.Tensor],
+        stage: str,
+    ) -> torch.Tensor:
+        images = batch["pixel_values"]
+        labels = batch["labels"]
+        loss, scores = self._loss_and_scores(images, labels)
+        self.metrics.update(stage, scores.argmax(dim=1), labels)
+        self._log_loss(
+            stage,
+            loss,
+            batch_size=images.shape[0],
+            on_step=False,
+        )
+        return loss
+
+    def validation_step(
+        self,
+        batch: dict[str, torch.Tensor],
+        batch_idx: int,
+    ) -> torch.Tensor:
+        return self._evaluation_step(batch, "val")
+
+    def test_step(
+        self,
+        batch: dict[str, torch.Tensor],
+        batch_idx: int,
+    ) -> torch.Tensor:
+        return self._evaluation_step(batch, "test")
+
+    def _reset_metrics(self, stage: str) -> None:
+        self.metrics.reset(stage)
+
+    def _log_metrics(self, stage: str) -> None:
+        scalar_metrics, confusion = self.metrics.snapshot(stage)
+        self._latest_metrics[stage] = {
+            **{
+                name: float(value.detach().cpu())
+                for name, value in scalar_metrics.items()
+            },
+            "confusion_matrix": confusion.detach().cpu().tolist(),
+        }
+        for name, value in scalar_metrics.items():
+            self.log(
+                f"{stage}/{name}",
+                value,
+                prog_bar=name == "miou",
+                on_step=False,
+                on_epoch=True,
+            )
+
+    def latest_metrics(self, stage: str) -> dict[str, Any]:
+        """Return a copy of the latest JSON-safe epoch metrics."""
+        if stage not in self._latest_metrics:
+            raise RuntimeError(f"no completed {stage!r} epoch is available")
+        metrics = self._latest_metrics[stage]
+        return {
+            **{key: value for key, value in metrics.items() if key != "confusion_matrix"},
+            "confusion_matrix": [row.copy() for row in metrics["confusion_matrix"]],
+        }
+
+    def on_train_epoch_start(self) -> None:
+        self._reset_metrics("train")
+
+    def on_train_epoch_end(self) -> None:
+        self._log_metrics("train")
+
+    def on_validation_epoch_start(self) -> None:
+        self._reset_metrics("val")
+
+    def on_validation_epoch_end(self) -> None:
+        self._log_metrics("val")
+
+    def on_test_epoch_start(self) -> None:
+        self._reset_metrics("test")
+
+    def on_test_epoch_end(self) -> None:
+        self._log_metrics("test")
+
+    def _estimated_total_steps(self) -> int:
+        if self.total_steps is not None:
+            return self.total_steps
+        total_steps = int(self.trainer.estimated_stepping_batches)
+        if total_steps <= 0:
+            raise RuntimeError("trainer estimated no optimizer steps")
+        return total_steps
+
+    def configure_optimizers(self) -> dict[str, Any]:
+        groups = parameter_groups(
+            self.model,
+            head_learning_rate=self.head_learning_rate,
+            backbone_learning_rate=self.backbone_learning_rate,
+        )
+        optimizer = torch.optim.AdamW(groups, weight_decay=self.weight_decay)
+
+        total_steps = self._estimated_total_steps()
+        warmup_steps = min(total_steps, math.ceil(total_steps * self.warmup_fraction))
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer,
+            lr_lambda=lambda step: cosine_with_warmup_multiplier(
+                step,
+                total_steps=total_steps,
+                warmup_steps=warmup_steps,
+            ),
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+                "name": "cosine_with_warmup",
+            },
+        }
+
+
 class TrainerModule(L.LightningModule):
-    """Train a student with hard labels and logits from a frozen teacher."""
+    """Legacy teacher/student trainer retained for the later distillation work."""
 
     def __init__(
         self,
@@ -28,9 +325,13 @@ class TrainerModule(L.LightningModule):
         distillation_weight: float = 1.0,
         learning_rate: float = 3e-4,
         weight_decay: float = 0.0,
+        backbone_learning_rate: float | None = None,
+        class_names: list[str] | None = None,
+        ignore_index: int = 255,
+        eval_crop_size: int | None = None,
+        eval_stride: int | None = None,
     ) -> None:
         super().__init__()
-
         self.teacher = teacher
         self.student = student
         self.task_loss = task_loss
@@ -39,25 +340,27 @@ class TrainerModule(L.LightningModule):
         self.distillation_weight = distillation_weight
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.backbone_learning_rate = backbone_learning_rate
+        self.eval_crop_size = eval_crop_size
+        self.eval_stride = eval_stride
+        self.metrics = (
+            SegmentationMetrics(class_names, ignore_index) if class_names else None
+        )
 
         if self.teacher is not None:
             self.teacher.requires_grad_(False)
         if self.distillation_weight and self.teacher is None:
             raise ValueError("a teacher is required when distillation_weight is non-zero")
-
         self.save_hyperparameters(
-            ignore=[
-                "teacher",
-                "student",
-                "task_loss",
-                "distillation_loss",
-            ]
+            ignore=["teacher", "student", "task_loss", "distillation_loss"]
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.student(inputs)
 
     def on_train_epoch_start(self) -> None:
+        if self.metrics is not None:
+            self.metrics.reset("train")
         if self.teacher is not None:
             self.teacher.eval()
 
@@ -68,9 +371,10 @@ class TrainerModule(L.LightningModule):
         inputs = batch["pixel_values"]
         targets = batch["labels"]
         student_logits = self.student(inputs)
-
-        # todo make abstraction on this loss so it can be easily changed
         task_loss = self.task_loss(student_logits, targets)
+        if self.metrics is not None:
+            self.metrics.update("train", student_logits.argmax(dim=1), targets)
+
         if self.distillation_weight:
             with torch.no_grad():
                 teacher_logits = self.teacher(inputs)
@@ -78,7 +382,6 @@ class TrainerModule(L.LightningModule):
         else:
             kd_loss = task_loss.new_zeros(())
         loss = self.task_weight * task_loss + self.distillation_weight * kd_loss
-
         metrics = {
             "loss": loss.detach(),
             "task_loss": task_loss.detach(),
@@ -92,27 +395,7 @@ class TrainerModule(L.LightningModule):
         batch_idx: int,
     ) -> torch.Tensor:
         loss, metrics = self.shared_step(batch)
-
-        self.log(
-            "train/loss",
-            metrics["loss"],
-            prog_bar=True,
-            on_step=True,
-            on_epoch=True,
-            batch_size=batch["pixel_values"].shape[0],
-        )
-        self.log_dict(
-            {
-                f"train/{name}": value
-                for name, value in metrics.items()
-                if name != "loss"
-            },
-            prog_bar=False,
-            on_step=True,
-            on_epoch=True,
-            batch_size=batch["pixel_values"].shape[0],
-        )
-
+        self._log_losses("train", metrics, batch["pixel_values"].shape[0], True)
         return loss
 
     def _evaluation_step(
@@ -122,37 +405,111 @@ class TrainerModule(L.LightningModule):
     ) -> torch.Tensor:
         inputs = batch["pixel_values"]
         targets = batch["labels"]
-        student_logits = self.student(inputs)
-        loss = self.task_loss(student_logits, targets)
-
-        self.log(
-            f"{stage}/loss",
-            loss,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-            sync_dist=True,
-            batch_size=inputs.shape[0],
+        logits = sliding_window_logits(
+            self.student,
+            inputs,
+            crop_size=self.eval_crop_size,
+            stride=self.eval_stride,
+        )
+        loss = self.task_loss(logits, targets)
+        if self.metrics is not None:
+            self.metrics.update(stage, logits.argmax(dim=1), targets)
+        self._log_losses(
+            stage,
+            {"loss": loss},
+            inputs.shape[0],
+            False,
         )
         return loss
+
+    def _log_losses(
+        self,
+        stage: str,
+        losses: Mapping[str, torch.Tensor],
+        batch_size: int,
+        on_step: bool,
+    ) -> None:
+        for name, value in losses.items():
+            self.log(
+                f"{stage}/{name}",
+                value,
+                prog_bar=name == "loss",
+                on_step=on_step,
+                on_epoch=True,
+                sync_dist=not on_step,
+                batch_size=batch_size,
+            )
+
+    def _log_metrics(self, stage: str) -> None:
+        if self.metrics is None:
+            return
+        for name, value in self.metrics.compute(stage).items():
+            self.log(
+                f"{stage}/{name}",
+                value,
+                prog_bar=name == "miou",
+                on_step=False,
+                on_epoch=True,
+            )
+
+    def on_train_epoch_end(self) -> None:
+        self._log_metrics("train")
+
+    def on_validation_epoch_start(self) -> None:
+        if self.metrics is not None:
+            self.metrics.reset("val")
+
+    def on_validation_epoch_end(self) -> None:
+        self._log_metrics("val")
+
+    def on_test_epoch_start(self) -> None:
+        if self.metrics is not None:
+            self.metrics.reset("test")
+
+    def on_test_epoch_end(self) -> None:
+        self._log_metrics("test")
 
     def validation_step(
         self,
         batch: dict[str, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
-        return self._evaluation_step(batch, stage="val")
+        return self._evaluation_step(batch, "val")
 
     def test_step(
         self,
         batch: dict[str, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
-        return self._evaluation_step(batch, stage="test")
+        return self._evaluation_step(batch, "test")
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
+        parameters: list[nn.Parameter] | list[dict[str, Any]] = [
+            parameter
+            for parameter in self.student.parameters()
+            if parameter.requires_grad
+        ]
+        if self.backbone_learning_rate is not None and hasattr(
+            self.student, "backbone"
+        ):
+            backbone = [
+                parameter
+                for parameter in self.student.backbone.parameters()
+                if parameter.requires_grad
+            ]
+            backbone_ids = {id(parameter) for parameter in backbone}
+            head = [
+                parameter
+                for parameter in self.student.parameters()
+                if parameter.requires_grad and id(parameter) not in backbone_ids
+            ]
+            parameters = [{"params": head}]
+            if backbone:
+                parameters.append(
+                    {"params": backbone, "lr": self.backbone_learning_rate}
+                )
         return torch.optim.AdamW(
-            self.student.parameters(),
+            parameters,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
@@ -161,24 +518,39 @@ class TrainerModule(L.LightningModule):
 def create_trainer(
     output_dir: str | Path,
     max_epochs: int,
-    precision: str = "32-true",
+    *,
+    precision: str = "bf16-mixed",
     devices: int | list[int] | str = "auto",
+    accumulate_grad_batches: int = 1,
     log_every_n_steps: int = 50,
     profile: bool = False,
-    profiler=None,
+    profiler: Any = None,
     fast_dev_run: bool = False,
+    enable_wandb: bool = True,
 ) -> L.Trainer:
+    """Create the canonical trainer.
+
+    ``fast_dev_run`` is a checkpoint-preserving one-batch smoke mode rather
+    than Lightning's built-in mode, which disables checkpoint callbacks.
+    """
+    if accumulate_grad_batches <= 0:
+        raise ValueError("accumulate_grad_batches must be positive")
+
     output_dir = Path(output_dir)
     callbacks: list[Callback] = [
         ModelCheckpoint(
             dirpath=output_dir / "checkpoints",
-            monitor="val/loss",
-            mode="min",
-            save_top_k=2,
-            save_last=True,
-        ),
-        LearningRateMonitor(logging_interval="step"),
+            filename="best",
+            auto_insert_metric_name=False,
+            monitor="val/miou",
+            mode="max",
+            save_top_k=1,
+            save_last=False,
+            save_weights_only=True,
+        )
     ]
+    if enable_wandb:
+        callbacks.append(LearningRateMonitor(logging_interval="step"))
     if profile:
         callbacks.append(GpuStatsCallback(every_n_steps=log_every_n_steps))
 
@@ -186,12 +558,18 @@ def create_trainer(
         default_root_dir=output_dir,
         accelerator="auto",
         devices=devices,
-        max_epochs=max_epochs,
+        max_epochs=1 if fast_dev_run else max_epochs,
         precision=precision,
+        accumulate_grad_batches=accumulate_grad_batches,
         gradient_clip_val=1.0,
         log_every_n_steps=log_every_n_steps,
         callbacks=callbacks,
-        logger=make_wandb_logger(output_dir),
+        logger=make_wandb_logger(output_dir) if enable_wandb else False,
         profiler=profiler,
-        fast_dev_run=fast_dev_run,
+        fast_dev_run=False,
+        limit_train_batches=1 if fast_dev_run else 1.0,
+        limit_val_batches=1 if fast_dev_run else 1.0,
+        limit_test_batches=1 if fast_dev_run else 1.0,
+        num_sanity_val_steps=0 if fast_dev_run else 2,
+        deterministic="warn",
     )

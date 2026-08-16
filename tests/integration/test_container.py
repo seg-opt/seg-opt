@@ -1,7 +1,5 @@
 """Integration tests for the shared Singularity/Apptainer setup on Eagle."""
 
-from __future__ import annotations
-
 import shlex
 
 import pytest

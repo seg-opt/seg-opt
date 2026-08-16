@@ -2,26 +2,32 @@ from pathlib import Path
 
 import numpy as np
 
-from src.data.dataset import _decode_pair, filter_pairs, find_pairs, load_excluded_ids
+from src.data.dataset import _decode_pair, find_pairs, load_split_manifest
 from src.utils.utils import load_config
 
 
 def test_configured_real_dataset_and_print_entries():
     """Validate the real dataset; run pytest with -s to display sample summaries."""
-    config = load_config("experiments/baseline_resnet34/config.yaml").data
+    config = load_config("experiments/baselines/resnet34_unet.yaml").data
     root = Path(config.dataset_root)
 
     assert root.is_dir()
-    assert Path(config.image_dir) == root / "images" / "render"
-    assert Path(config.mask_dir) == root / "images" / "ground"
+    image_dir = root / "images" / "render"
+    mask_dir = root / "images" / "ground"
+    pairs = find_pairs(image_dir, mask_dir)
+    manifest = load_split_manifest(config.split_manifest, dataset_root=root)
 
-    pairs = find_pairs(config.image_dir, config.mask_dir)
-    excluded = load_excluded_ids(root / name for name in config.excluded_id_files)
-    filtered = filter_pairs(pairs, excluded)
+    assert len(pairs) == 9_766
+    assert manifest.counts == {
+        "train": 7_353,
+        "validation": 920,
+        "test": 920,
+        "total": 9_193,
+    }
+    indexed = {image.stem[-4:]: (image, mask) for image, mask in pairs}
 
-    assert (len(pairs), len(excluded), len(filtered)) == (9_766, 573, 9_193)
-
-    for index, pair in enumerate(filtered[:3]):
+    for index, frame_id in enumerate(manifest.train_ids[:3]):
+        pair = indexed[frame_id]
         image, labels = _decode_pair(pair)
         classes, counts = np.unique(labels, return_counts=True)
         assert image.shape == (480, 720, 3)

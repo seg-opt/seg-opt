@@ -1,15 +1,10 @@
 model:
   num_classes: 4
-  # Required by the common schema, but not loaded when distillation.weight=0.
-  teacher:
-    name: mask2former
-    model_id: facebook/mask2former-swin-large-ade-semantic
-    freeze: true
   student:
-    backbone: resnet
-    backbone_id: resnet34
-    decoder: unet
-    pretrained: true
+    backbone: fast_scnn
+    backbone_id: fast_scnn
+    decoder: fast_scnn
+    pretrained: false
 
 distillation:
   temperature: 4.0
@@ -31,6 +26,18 @@ data:
   val_frac: 0.1
   test_frac: 0.1
 
+# The shared supervised-baseline entrypoint currently trains plain CE. Keep
+# these values explicit so the recorded configuration matches the actual loss.
+loss:
+  cross_entropy_weight: 1.0
+  dice_weight: 0.0
+  class_weights: null
+  ignore_index: 255
+
+evaluation:
+  crop_size: null
+  stride: null
+
 training:
   epochs: 10
   batch_size: 16
@@ -40,4 +47,4 @@ training:
   precision: bf16
   logging_steps: 20
   seed: 42
-  output_dir: results/baseline_resnet34
+  output_dir: results/baseline_fast_scnn/equal_recipe_v1_retry1

@@ -276,6 +276,38 @@ wheels = [
 ]
 
 [[package]]
+name = "kornia"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "kornia-rs" },
+    { name = "packaging" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c6/e6/45e757d4924176e4d4e111e10effaab7db382313243e0188a06805010073/kornia-0.8.2.tar.gz", hash = "sha256:5411b2ce0dd909d1608016308cd68faeef90f88c47f47e8ecd40553fd4d8b937", size = 667151, upload-time = "2025-11-08T12:10:03.042Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/d4/e9bd12b7b4cbd23b4dfb47e744ee1fa54d6d9c3c9bc406ec86c1be8c8307/kornia-0.8.2-py2.py3-none-any.whl", hash = "sha256:32dfe77c9c74a87a2de49395aa3c2c376a1b63c27611a298b394d02d13905819", size = 1095012, upload-time = "2025-11-08T12:10:01.226Z" },
+]
+
+[[package]]
+name = "kornia-rs"
+version = "0.1.14"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/0f/cd6985790031ad2f0d4fcdfdb9763a177bebb970edddc6fe29f9e6afd902/kornia_rs-0.1.14.tar.gz", hash = "sha256:7584f654a9db2b41bee05c9aaf865608b665e2f7195096372e001b6f220de1d2", size = 2556658, upload-time = "2026-05-19T07:45:06.366Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/16/c0a4e602b0ae106dcae9ee94d115f348c7b385f175831b54acf56d886a47/kornia_rs-0.1.14-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:a703ec79a33b76115386dfef02fd36bed17715a1209fed858dd0c1adf7482421", size = 3554935, upload-time = "2026-05-19T07:46:03.239Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/fa/63b541cd864bdaab443cc402751f22d881e5219e409627b7cf3cbf6e737b/kornia_rs-0.1.14-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:ea26534e04f937f2f4d445e12dcbf0c291c4afbb91b3d659b03c1841b0a445d7", size = 3349072, upload-time = "2026-05-19T07:45:49.185Z" },
+    { url = "https://files.pythonhosted.org/packages/32/f2/ebb0584fe11a93b4f92fbd2638c0476999003e3501557c26ceef51a5b9da/kornia_rs-0.1.14-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9f0312afdaf27fb4579d07fdf6b457b2c75e1323a4d3b1d5812a86fef0a2316e", size = 3381025, upload-time = "2026-05-19T07:45:12.785Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/09/3f78df732325132a3f8fceb0059c1e4736bb48e4fca8acea7d3de93ad15f/kornia_rs-0.1.14-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:65ba9214fc10cca816b7f6653f59a2bb74f343dce163adceba10926480d7a2b6", size = 3694754, upload-time = "2026-05-19T07:45:31.881Z" },
+    { url = "https://files.pythonhosted.org/packages/32/76/c6f5d9dbbad23c36fa5ecbbf64bce253680080de928df85f21a9ec8dfd3e/kornia_rs-0.1.14-cp313-cp313-win_amd64.whl", hash = "sha256:4d3312002012fd0189e762b62b24d882e97e4ea9fe3a3834f01d7e17e911201c", size = 3366940, upload-time = "2026-05-19T07:46:18.703Z" },
+    { url = "https://files.pythonhosted.org/packages/88/41/c88fc43775e77d2e8c134f996c8962fdc51987307b604f50a3d2298f4836/kornia_rs-0.1.14-cp313-cp313t-macosx_10_12_x86_64.whl", hash = "sha256:45866a0691ecb491a6af3c779b25fd76dc65792710070d0673181a7f9dc38a08", size = 3543237, upload-time = "2026-05-19T07:46:04.733Z" },
+    { url = "https://files.pythonhosted.org/packages/78/7f/ad46cdd7b24006914f8f50d907e0e64cdf2231f4dffce253f90785eda132/kornia_rs-0.1.14-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:2b329376d01a03e5a76a381efaaafa6fe1e54a5932eace1de95760564643ca4d", size = 3339920, upload-time = "2026-05-19T07:45:50.824Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/fb/62ab6d4b582eaf12ac991c1bdb94f2211bd7bbeb59c04108af9e9456904e/kornia_rs-0.1.14-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:603f56ffa0ffe2de50e5c3c4c606e5a37c98c0277a2ad752feac0e25920880f4", size = 3377444, upload-time = "2026-05-19T07:45:14.587Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/a8/9f6dec9c5b78ff76dca0fd63c6f3c96b8d00e2a475fcfadd7eeee0c65729/kornia_rs-0.1.14-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:496301c800afea6867220d0f02344f44a90b50c1da22d5511c25df0c0c2b4d75", size = 3686869, upload-time = "2026-05-19T07:45:33.734Z" },
+    { url = "https://files.pythonhosted.org/packages/15/e7/ff8d97f922679c0f8f3aec6b27bab98c03c02feb2200543aed2e98b4b09d/kornia_rs-0.1.14-cp313-cp313t-win_amd64.whl", hash = "sha256:29cfb7b179ba0b98772bd459f6e74da67f93b290491a5c03deb9197955dfa684", size = 3359930, upload-time = "2026-05-19T07:46:20.207Z" },
+]
+
+[[package]]
 name = "lightning"
 version = "2.6.5"
 source = { registry = "https://pypi.org/simple" }
@@ -912,6 +944,7 @@ name = "seg-opt"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "kornia" },
     { name = "lightning" },
     { name = "numpy" },
     { name = "pillow" },
@@ -931,6 +964,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "kornia", specifier = ">=0.8.2,<0.8.3" },
     { name = "lightning", specifier = ">=2.6,<3" },
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "pillow", specifier = ">=11.3.0" },
