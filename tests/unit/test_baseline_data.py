@@ -9,6 +9,8 @@ import torch
 from PIL import Image
 
 from src.data.dataset import (
+    ALIGNED_SPLIT_MANIFEST,
+    ALIGNED_SPLIT_SHA256,
     CANONICAL_SPLIT_SHA256,
     DATASET_ROOT,
     DEFAULT_SPLIT_MANIFEST,
@@ -23,14 +25,17 @@ from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTran
 def _write_pair(root: Path, frame_id: str) -> None:
     image_dir = root / "images" / "render"
     mask_dir = root / "images" / "ground"
+    clean_dir = root / "images" / "clean"
     image_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
+    clean_dir.mkdir(parents=True, exist_ok=True)
 
     image = np.full((4, 6, 3), int(frame_id), dtype=np.uint8)
     ground = np.zeros((4, 6, 3), dtype=np.uint8)
     ground[:, :3, 1] = 255
     Image.fromarray(image).save(image_dir / f"render{frame_id}.png")
     Image.fromarray(ground).save(mask_dir / f"ground{frame_id}.png")
+    Image.fromarray(ground).save(clean_dir / f"clean{frame_id}.png")
 
 
 def _write_manifest(
@@ -172,6 +177,48 @@ def test_dataset_loader_uses_manifest_order_and_exposes_metadata(tmp_path: Path)
     assert train[0]["labels"].shape == (8, 12)
 
 
+def test_dataset_loader_can_select_clean_masks(tmp_path: Path) -> None:
+    for index in range(1, 4):
+        frame_id = f"{index:04d}"
+        _write_pair(tmp_path, frame_id)
+        clean = np.zeros((4, 6, 3), dtype=np.uint8)
+        clean[:, 3:, 2] = 255
+        Image.fromarray(clean).save(
+            tmp_path / "images" / "clean" / f"clean{frame_id}.png"
+        )
+    path = tmp_path / "split.json"
+    _write_manifest(path, train=["0001"], validation=["0002"], test=["0003"])
+    transform = EvalSegmentationTransform(height=8, width=12)
+
+    ground = load_datasets(
+        SegmentationImageProcessor(),
+        dataset_root=tmp_path,
+        split_manifest=path,
+        mask_variant="ground",
+        train_transform=transform,
+        eval_transform=transform,
+    )
+    clean = load_datasets(
+        SegmentationImageProcessor(),
+        dataset_root=tmp_path,
+        split_manifest=path,
+        mask_variant="clean",
+        train_transform=transform,
+        eval_transform=transform,
+    )
+
+    assert set(ground[2][0]["labels"].unique().tolist()) == {0, 2}
+    assert set(clean[2][0]["labels"].unique().tolist()) == {0, 3}
+
+    with pytest.raises(ValueError, match="mask_variant"):
+        load_datasets(
+            SegmentationImageProcessor(),
+            dataset_root=tmp_path,
+            split_manifest=path,
+            mask_variant="invalid",  # type: ignore[arg-type]
+        )
+
+
 def test_dataset_rejects_processors_that_change_geometry(tmp_path: Path) -> None:
     _write_pair(tmp_path, "0001")
 
@@ -205,3 +252,22 @@ def test_canonical_manifest_is_frozen_and_includes_top200() -> None:
         "total": 9_193,
     }
     assert top200 <= set(manifest.all_ids)
+
+
+def test_aligned_manifest_is_frozen_and_excludes_top200() -> None:
+    dataset_root = Path(DATASET_ROOT)
+    if not dataset_root.is_dir():
+        pytest.skip("artificial lunar landscape dataset is not available")
+
+    manifest = load_split_manifest(ALIGNED_SPLIT_MANIFEST, dataset_root=dataset_root)
+    top200 = set((dataset_root / "top200_largerocks_IDs.txt").read_text().split())
+
+    assert manifest.sha256 == ALIGNED_SPLIT_SHA256
+    assert manifest.counts == {
+        "train": 7_200,
+        "validation": 896,
+        "test": 897,
+        "total": 8_993,
+    }
+    assert set(manifest.all_ids).isdisjoint(top200)
+    assert manifest.excluded_id_files[-1] == "top200_largerocks_IDs.txt"

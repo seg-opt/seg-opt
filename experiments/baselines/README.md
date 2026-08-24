@@ -17,6 +17,26 @@ Smoke runs must use `--fast-dev-run --offline`. They retain and restore
 `best.ckpt`, evaluate one validation/test batch, and write beneath
 `results/smoke/`.
 
+## Clean-mask evaluation
+
+The original runs use the rendered masks in `images/ground` for backward
+compatibility. For post-hoc evaluation against the provided discrete masks,
+use `--mask-variant clean` together with the aligned manifest, which removes
+the 200 frames flagged by the dataset authors for close-rock mask/render
+misalignment:
+
+```bash
+uv run python -m scripts.evaluate \
+  --config experiments/baselines/fast_scnn.yaml \
+  --checkpoint results/baselines/fast_scnn/seed42/checkpoints/best.ckpt \
+  --mask-variant clean \
+  --split-manifest experiments/baselines/split_seed42_aligned.json \
+  --output-dir results/baselines/fast_scnn/seed42/evaluation_clean_aligned
+```
+
+Clean evaluation is post-hoc: checkpoint selection and training still reflect
+the mask source recorded by the original training artifact.
+
 ## Full canonical runs
 
 Authenticate W&B once on the login node, then submit the canonical array:

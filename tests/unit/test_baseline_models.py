@@ -159,3 +159,14 @@ def test_mask2former_rejects_an_all_ignore_training_target():
 
     with pytest.raises(ValueError, match="all-ignore"):
         model.dense_targets(labels)
+
+
+def test_mask2former_converts_semantic_scores_to_normalized_log_potentials():
+    model = Mask2FormerSegmenter(TinyMask2Former(), CLASS_NAMES)
+    scores = torch.tensor([[[[1.0, 0.0]], [[3.0, 0.0]], [[0.0, 0.0]], [[0.0, 0.0]]]])
+
+    logits = model.to_distillation_logits(scores)
+
+    torch.testing.assert_close(logits.softmax(dim=1), torch.tensor(
+        [[[[0.25, 0.25]], [[0.75, 0.25]], [[0.0, 0.25]], [[0.0, 0.25]]]]
+    ), atol=1e-6, rtol=0)

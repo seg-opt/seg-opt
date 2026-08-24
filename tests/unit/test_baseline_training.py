@@ -93,6 +93,22 @@ def test_metrics_ignore_labels_and_export_confusion_matrix() -> None:
     json.dumps(result)
 
 
+def test_metrics_export_gt_trimap_diagnostics_without_changing_standard_iou() -> None:
+    metrics = SegmentationMetrics(CLASS_NAMES, trimap_kernel_size=3)
+    targets = torch.zeros(1, 5, 5, dtype=torch.long)
+    targets[:, 2, 2] = 2
+    predictions = targets.clone()
+    predictions[:, 2, 2] = 0
+
+    metrics.update("val", predictions, targets)
+    result = metrics.serializable("val")
+
+    assert result["miou"] < 1
+    assert result["trimap_miou"] < 1
+    assert "trimap_iou_small_rock" in result
+    assert result["trimap_iou_small_rock"] == pytest.approx(0)
+
+
 def test_all_ignored_loss_is_finite_and_differentiable() -> None:
     scores = torch.randn(1, 4, 3, 5, requires_grad=True)
     labels = torch.full((1, 3, 5), 255)

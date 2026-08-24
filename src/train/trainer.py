@@ -8,7 +8,9 @@ import torch
 from lightning.pytorch import Callback
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from torch import nn
+from torch.nn.modules.module import _IncompatibleKeys
 
+from src.distillation.bpkd import DistillationLossResult
 from src.models.inference import sliding_window_logits
 from src.train.metrics import SegmentationMetrics
 from src.train.profiling import GpuStatsCallback
@@ -102,6 +104,7 @@ class BaselineModule(L.LightningModule):
         warmup_fraction: float = 0.05,
         class_names: Sequence[str],
         ignore_index: int = 255,
+        trimap_kernel_size: int | None = None,
         total_steps: int | None = None,
     ) -> None:
         super().__init__()
@@ -117,9 +120,18 @@ class BaselineModule(L.LightningModule):
         self.weight_decay = weight_decay
         self.warmup_fraction = warmup_fraction
         self.total_steps = total_steps
-        self.metrics = SegmentationMetrics(class_names, ignore_index)
+        self.metrics = SegmentationMetrics(
+            class_names,
+            ignore_index,
+            trimap_kernel_size=trimap_kernel_size,
+        )
         self._latest_metrics: dict[str, dict[str, Any]] = {}
-        self.save_hyperparameters(ignore=["model", "criterion"])
+        # A subclass (DistillationModule) may add nn.Module constructor
+        # arguments.  Ignore their conventional names here too because this
+        # call inspects the active subclass frame under Lightning.
+        self.save_hyperparameters(
+            ignore=["model", "criterion", "teacher", "distillation_loss"]
+        )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         return self.model(images)
@@ -310,6 +322,154 @@ class BaselineModule(L.LightningModule):
                 "name": "cosine_with_warmup",
             },
         }
+
+
+class DistillationModule(BaselineModule):
+    """Canonical baseline trainer with a frozen teacher used only for training."""
+
+    def __init__(
+        self,
+        model: nn.Module,
+        criterion: nn.Module,
+        *,
+        teacher: nn.Module,
+        distillation_loss: nn.Module,
+        head_learning_rate: float,
+        backbone_learning_rate: float | None = None,
+        weight_decay: float = 0.0,
+        warmup_fraction: float = 0.05,
+        class_names: Sequence[str],
+        ignore_index: int = 255,
+        trimap_kernel_size: int | None = None,
+        total_steps: int | None = None,
+    ) -> None:
+        super().__init__(
+            model,
+            criterion,
+            head_learning_rate=head_learning_rate,
+            backbone_learning_rate=backbone_learning_rate,
+            weight_decay=weight_decay,
+            warmup_fraction=warmup_fraction,
+            class_names=class_names,
+            ignore_index=ignore_index,
+            trimap_kernel_size=trimap_kernel_size,
+            total_steps=total_steps,
+        )
+        self.teacher = teacher
+        self.distillation_loss = distillation_loss
+        self.teacher.requires_grad_(False)
+        self.teacher.eval()
+        self.save_hyperparameters(
+            ignore=["model", "criterion", "teacher", "distillation_loss"]
+        )
+
+    @staticmethod
+    def _distillation_logits(model: nn.Module, scores: torch.Tensor) -> torch.Tensor:
+        converter = getattr(model, "to_distillation_logits", None)
+        logits = converter(scores) if callable(converter) else scores
+        if not isinstance(logits, torch.Tensor):
+            raise TypeError("to_distillation_logits must return a tensor")
+        return logits
+
+    def train(self, mode: bool = True) -> "DistillationModule":
+        super().train(mode)
+        self.teacher.eval()
+        return self
+
+    def on_train_epoch_start(self) -> None:
+        super().on_train_epoch_start()
+        self.teacher.eval()
+
+    def _log_training_component(
+        self,
+        name: str,
+        value: torch.Tensor,
+        *,
+        batch_size: int,
+    ) -> None:
+        self.log(
+            f"train/{name}",
+            value.detach(),
+            on_step=True,
+            on_epoch=True,
+            sync_dist=False,
+            batch_size=batch_size,
+        )
+
+    def training_step(
+        self,
+        batch: dict[str, torch.Tensor],
+        batch_idx: int,
+    ) -> torch.Tensor:
+        del batch_idx
+        images = batch["pixel_values"]
+        labels = batch["labels"]
+        task_loss, scores = self._loss_and_scores(images, labels)
+        # Lightning switches all child modules with the parent.  Reassert this
+        # immediately before every teacher forward so the teacher cannot ever
+        # update BatchNorm/dropout state during a student step.
+        self.teacher.eval()
+        with torch.no_grad():
+            teacher_scores = self.teacher(images)
+        result = self.distillation_loss(
+            self._distillation_logits(self.model, scores),
+            self._distillation_logits(self.teacher, teacher_scores),
+            labels,
+        )
+        if not isinstance(result, DistillationLossResult):
+            raise TypeError("distillation_loss must return DistillationLossResult")
+        if result.total.ndim != 0:
+            raise TypeError("distillation loss must return a scalar tensor")
+
+        loss = task_loss + result.total
+        self.metrics.update("train", scores.detach().argmax(dim=1), labels)
+        self._log_loss("train", loss, batch_size=images.shape[0], on_step=True)
+        self._log_training_component(
+            "task_loss",
+            task_loss,
+            batch_size=images.shape[0],
+        )
+        self._log_training_component(
+            "distillation_loss",
+            result.total,
+            batch_size=images.shape[0],
+        )
+        for name, value in result.components.items():
+            self._log_training_component(
+                f"distillation_{name}",
+                value,
+                batch_size=images.shape[0],
+            )
+        return loss
+
+    def state_dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Exclude frozen teacher weights from student deployment checkpoints."""
+        state = super().state_dict(*args, **kwargs)
+        for key in [key for key in state if key.startswith("teacher.")]:
+            state.pop(key)
+        return state
+
+    def load_state_dict(
+        self,
+        state_dict: Mapping[str, Any],
+        strict: bool = True,
+        assign: bool = False,
+    ) -> _IncompatibleKeys:
+        incompatible = super().load_state_dict(
+            state_dict,
+            strict=False,
+            assign=assign,
+        )
+        missing = [
+            key for key in incompatible.missing_keys if not key.startswith("teacher.")
+        ]
+        unexpected = list(incompatible.unexpected_keys)
+        if strict and (missing or unexpected):
+            raise RuntimeError(
+                "distillation checkpoint state does not match the student: "
+                f"missing={missing}, unexpected={unexpected}"
+            )
+        return _IncompatibleKeys(missing, unexpected)
 
 
 class TrainerModule(L.LightningModule):

@@ -7,12 +7,16 @@ import pytest
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
-from scripts.evaluate import evaluate_checkpoint, prepare_artifact_directory
+from scripts.evaluate import (
+    _distillation_artifact,
+    evaluate_checkpoint,
+    prepare_artifact_directory,
+)
 from src.baselines import BaselineComponents
 from src.data.dataset import SplitManifest
 from src.train.losses import SegmentationLoss
 from src.train.trainer import BaselineModule, create_trainer
-from src.utils.utils import load_config, write_resolved_config
+from src.utils.utils import TeacherConfig, load_config, write_resolved_config
 
 
 CLASS_NAMES = ("background", "sky", "small_rock", "large_rock")
@@ -107,8 +111,10 @@ def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path):
 
     saved = json.loads((tmp_path / "metrics.json").read_text(encoding="utf-8"))
     assert saved == artifact
+    assert artifact["schema_version"] == 2
     assert artifact["run_kind"] == "smoke"
     assert artifact["selection"]["metric"] == "val/miou"
+    assert artifact["data"]["mask_variant"] == "ground"
     assert artifact["data"]["split_sha256"] == "manifest-sha256"
     assert set(artifact["test"]["per_class"]) == set(CLASS_NAMES)
     assert len(artifact["test"]["confusion_matrix"]) == 4
@@ -123,3 +129,30 @@ def test_artifact_preparation_refuses_to_mix_runs(tmp_path):
 
     with pytest.raises(FileExistsError, match="must be empty"):
         prepare_artifact_directory(config, output_dir)
+
+
+def test_distillation_artifact_copies_teacher_config_and_hashes_provenance(tmp_path):
+    config = load_config("experiments/bpkd/fast_scnn_bpkd_w7_clean.yaml")
+    checkpoint = tmp_path / "teacher.ckpt"
+    checkpoint.write_bytes(b"trained-teacher")
+    assert config.distillation is not None
+    config = replace(
+        config,
+        distillation=replace(
+            config.distillation,
+            teacher=TeacherConfig(
+                config_path=config.distillation.teacher.config_path,
+                checkpoint_path=str(checkpoint),
+            ),
+        ),
+    )
+
+    prepared = prepare_artifact_directory(config, tmp_path / "artifact")
+    metadata = _distillation_artifact(prepared)
+
+    assert (tmp_path / "artifact" / "teacher_config.yaml").read_text(
+        encoding="utf-8"
+    ) == Path(config.distillation.teacher.config_path).read_text(encoding="utf-8")
+    assert metadata is not None
+    assert metadata["teacher"]["checkpoint_sha256"]
+    assert metadata["teacher"]["config_sha256"]

@@ -107,6 +107,7 @@ def main() -> None:
         output_dir,
         devices=args.devices,
         run_kind="smoke" if args.fast_dev_run else "full",
+        mask_variant=config.data.mask_variant,
         trainer=trainer,
     )
     log.info(

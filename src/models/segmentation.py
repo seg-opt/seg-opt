@@ -32,6 +32,17 @@ class SemanticSegmenter(nn.Module):
         scores = self(images)
         return criterion(scores, labels), scores
 
+    def to_distillation_logits(self, scores: torch.Tensor) -> torch.Tensor:
+        """Convert model scores to class potentials suitable for KL distillation.
+
+        Most canonical segmenters already return unconstrained dense logits.
+        Query-based models can override this without changing their inference
+        scores or native supervised objective.
+        """
+        if scores.ndim != 4 or scores.shape[1] != self.num_classes:
+            raise ValueError("scores must have shape [B, classes, H, W]")
+        return scores
+
 
 def make_segmentation_head(
     in_channels: int,
@@ -315,6 +326,23 @@ class Mask2FormerSegmenter(SemanticSegmenter):
             outputs.masks_queries_logits,
             output_size,
         )
+
+    def to_distillation_logits(self, scores: torch.Tensor) -> torch.Tensor:
+        """Turn Mask2Former's dense semantic scores into log-potentials.
+
+        The universal-segmentation head combines query class probabilities and
+        mask probabilities, so its dense output is non-negative evidence rather
+        than conventional class logits.  Normalizing it over classes and taking
+        a clamped log retains the teacher distribution under a later softmax.
+        """
+        if scores.ndim != 4 or scores.shape[1] != self.num_classes:
+            raise ValueError("scores must have shape [B, classes, H, W]")
+        probabilities = scores.clamp_min(0)
+        probabilities = probabilities / probabilities.sum(
+            dim=1,
+            keepdim=True,
+        ).clamp_min(1e-8)
+        return probabilities.clamp_min(1e-8).log()
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         outputs = self.model(pixel_values=pixel_values)

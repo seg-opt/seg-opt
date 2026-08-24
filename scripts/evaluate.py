@@ -1,6 +1,6 @@
 import argparse
 import shutil
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +8,7 @@ import lightning as L
 import torch
 
 from src.baselines import BaselineComponents, build_baseline
+from src.data.dataset import MASK_VARIANTS, MaskVariant
 from src.utils.artifacts import (
     parameter_counts,
     sha256_file,
@@ -27,6 +28,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--mask-variant",
+        choices=MASK_VARIANTS,
+        help="override the config mask variant for this evaluation",
+    )
+    parser.add_argument(
+        "--split-manifest",
+        type=Path,
+        help="override the config split manifest for evaluation",
+    )
     parser.add_argument("--devices", default="auto")
     parser.add_argument(
         "--smoke-run",
@@ -40,8 +51,10 @@ def parse_args() -> argparse.Namespace:
 def _structured_metrics(
     metrics: dict[str, Any],
     class_names: tuple[str, ...],
+    *,
+    trimap_kernel_size: int | None,
 ) -> dict[str, Any]:
-    return {
+    structured = {
         "miou": metrics["miou"],
         "macro_f1": metrics["macro_f1"],
         "pixel_accuracy": metrics["pixel_accuracy"],
@@ -55,6 +68,20 @@ def _structured_metrics(
         },
         "confusion_matrix": metrics["confusion_matrix"],
     }
+    if trimap_kernel_size is not None:
+        structured["trimap"] = {
+            "kernel_size": trimap_kernel_size,
+            "miou": metrics["trimap_miou"],
+            "per_class": {
+                name: {
+                    "iou": metrics[f"trimap_iou_{name}"],
+                    "precision": metrics[f"trimap_precision_{name}"],
+                    "recall": metrics[f"trimap_recall_{name}"],
+                }
+                for name in class_names
+            },
+        }
+    return structured
 
 
 def _checkpoint_epoch(path: Path) -> int:
@@ -80,6 +107,11 @@ def prepare_artifact_directory(
 
     split_path = output_dir / "split.json"
     shutil.copy2(config.data.split_manifest, split_path)
+    if config.distillation is not None:
+        teacher_config = Path(config.distillation.teacher.config_path)
+        if not teacher_config.is_file():
+            raise FileNotFoundError(f"teacher config not found: {teacher_config}")
+        shutil.copy2(teacher_config, output_dir / "teacher_config.yaml")
     resolved = replace(
         config,
         data=replace(config.data, split_manifest=str(split_path)),
@@ -87,6 +119,30 @@ def prepare_artifact_directory(
     )
     write_resolved_config(resolved, output_dir / "config.yaml")
     return resolved
+
+
+def _distillation_artifact(config: BaselineConfig) -> dict[str, Any] | None:
+    if config.distillation is None:
+        return None
+    settings = asdict(config.distillation)
+    teacher = settings.pop("teacher")
+    teacher_config = Path(teacher["config_path"])
+    teacher_checkpoint = Path(teacher["checkpoint_path"])
+    return {
+        "method": config.distillation.method,
+        "settings": settings,
+        "teacher": {
+            **teacher,
+            "config_sha256": (
+                sha256_file(teacher_config) if teacher_config.is_file() else None
+            ),
+            "checkpoint_sha256": (
+                sha256_file(teacher_checkpoint)
+                if teacher_checkpoint.is_file()
+                else None
+            ),
+        },
+    }
 
 
 def evaluate_checkpoint(
@@ -97,6 +153,7 @@ def evaluate_checkpoint(
     *,
     devices: int | list[int] | str = "auto",
     run_kind: str = "full",
+    mask_variant: MaskVariant | None = None,
     trainer: L.Trainer | None = None,
 ) -> dict[str, Any]:
     """Restore one checkpoint, run validation/test, and write metrics.json."""
@@ -106,6 +163,11 @@ def evaluate_checkpoint(
         raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
     if run_kind not in {"full", "smoke"}:
         raise ValueError("run_kind must be 'full' or 'smoke'")
+    selected_mask_variant = (
+        config.data.mask_variant if mask_variant is None else mask_variant
+    )
+    if selected_mask_variant not in MASK_VARIANTS:
+        raise ValueError(f"mask_variant must be one of {list(MASK_VARIANTS)}")
 
     if trainer is None:
         limit = 1 if run_kind == "smoke" else 1.0
@@ -139,7 +201,7 @@ def evaluate_checkpoint(
 
     config_path = output_dir / "config.yaml"
     artifact = {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_kind": run_kind,
         "model": {
             "name": config.model.name,
@@ -150,6 +212,7 @@ def evaluate_checkpoint(
         "data": {
             "class_names": list(config.data.class_names),
             "image_size": [config.data.image_height, config.data.image_width],
+            "mask_variant": selected_mask_variant,
             "split_sha256": components.split_manifest.sha256,
             "counts": components.split_manifest.counts,
         },
@@ -158,11 +221,22 @@ def evaluate_checkpoint(
             "best_epoch": _checkpoint_epoch(checkpoint_path),
             "best_value": validation["miou"],
         },
-        "validation": _structured_metrics(validation, config.data.class_names),
-        "test": _structured_metrics(test, config.data.class_names),
+        "validation": _structured_metrics(
+            validation,
+            config.data.class_names,
+            trimap_kernel_size=config.metrics.trimap_kernel_size,
+        ),
+        "test": _structured_metrics(
+            test,
+            config.data.class_names,
+            trimap_kernel_size=config.metrics.trimap_kernel_size,
+        ),
         "checkpoint_sha256": sha256_file(checkpoint_path),
         "config_sha256": sha256_file(config_path) if config_path.is_file() else None,
     }
+    distillation = _distillation_artifact(config)
+    if distillation is not None:
+        artifact["distillation"] = distillation
     write_json(output_dir / "metrics.json", artifact)
     return artifact
 
@@ -173,12 +247,32 @@ def main() -> None:
     if not checkpoint_path.is_file():
         raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
     config = load_config(args.config)
-    output_dir = args.output_dir or checkpoint_path.parent.parent / "evaluation"
+    if args.mask_variant is not None:
+        config = replace(
+            config,
+            data=replace(config.data, mask_variant=args.mask_variant),
+        )
+    if args.split_manifest is not None:
+        split_manifest = args.split_manifest.expanduser().resolve()
+        if not split_manifest.is_file():
+            raise FileNotFoundError(f"split manifest not found: {split_manifest}")
+        config = replace(
+            config,
+            data=replace(config.data, split_manifest=str(split_manifest)),
+        )
+    default_evaluation_dir = (
+        "evaluation" if config.data.mask_variant == "ground" else "evaluation_clean"
+    )
+    output_dir = args.output_dir or checkpoint_path.parent.parent / default_evaluation_dir
     config = prepare_artifact_directory(config, output_dir)
     log = configure_logging(output_dir, args.verbose)
     L.seed_everything(config.training.seed, workers=True)
-    log.info("Loading baseline %s", config.model.name)
-    components = build_baseline(config)
+    log.info(
+        "Loading baseline %s with %s masks",
+        config.model.name,
+        config.data.mask_variant,
+    )
+    components = build_baseline(config, include_distillation=False)
     artifact = evaluate_checkpoint(
         config,
         components,
@@ -186,6 +280,7 @@ def main() -> None:
         output_dir,
         devices=args.devices,
         run_kind="smoke" if args.smoke_run else "full",
+        mask_variant=config.data.mask_variant,
     )
     log.info(
         "Evaluation complete: val mIoU=%.4f, test mIoU=%.4f",

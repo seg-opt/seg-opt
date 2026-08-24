@@ -3,7 +3,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Literal, Sequence
 
 import numpy as np
 import torch
@@ -28,10 +28,16 @@ DEFAULT_SPLIT_MANIFEST = (
     Path(__file__).resolve().parents[2] / "experiments" / "baselines" / "split_seed42.json"
 )
 CANONICAL_SPLIT_SHA256 = "accaa362c675bfdd65b1a44c8c9cd19dba70ba41642fb23c67c544655914d79f"
+ALIGNED_SPLIT_MANIFEST = DEFAULT_SPLIT_MANIFEST.with_name(
+    "split_seed42_aligned.json"
+)
+ALIGNED_SPLIT_SHA256 = "e7486b858ee776695b9e5fbdd561ac072e37999d59e801e406c8a299d778c8ab"
 BACKGROUND_THRESHOLD = 10
 
 Pair = tuple[Path, Path]
 PairedTransform = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
+MaskVariant = Literal["ground", "clean"]
+MASK_VARIANTS = ("ground", "clean")
 _FRAME_ID_PATTERN = re.compile(r"\d{4}")
 
 
@@ -214,14 +220,14 @@ def load_split_manifest(
     path = Path(path)
     raw = path.read_bytes()
     sha256 = hashlib.sha256(raw).hexdigest()
-    if (
-        CANONICAL_SPLIT_SHA256
-        and path.resolve() == DEFAULT_SPLIT_MANIFEST.resolve()
-        and sha256 != CANONICAL_SPLIT_SHA256
-    ):
+    expected_sha256 = {
+        DEFAULT_SPLIT_MANIFEST.resolve(): CANONICAL_SPLIT_SHA256,
+        ALIGNED_SPLIT_MANIFEST.resolve(): ALIGNED_SPLIT_SHA256,
+    }.get(path.resolve())
+    if expected_sha256 is not None and sha256 != expected_sha256:
         raise ValueError(
-            "canonical split manifest checksum mismatch: "
-            f"expected {CANONICAL_SPLIT_SHA256}, got {sha256}"
+            "known split manifest checksum mismatch: "
+            f"expected {expected_sha256}, got {sha256}"
         )
 
     payload = json.loads(raw)
@@ -370,6 +376,7 @@ def load_datasets(
     processor: Any,
     dataset_root: str | Path = DATASET_ROOT,
     split_manifest: str | Path = DEFAULT_SPLIT_MANIFEST,
+    mask_variant: MaskVariant = "ground",
     train_transform: PairedTransform | None = TrainSegmentationTransform(),
     eval_transform: PairedTransform | None = EvalSegmentationTransform(),
     processor_kwargs: dict[str, Any] | None = None,
@@ -378,11 +385,15 @@ def load_datasets(
     max_test_samples: int | None = None,
 ) -> tuple[LunarDataset, LunarDataset, LunarDataset]:
     """Build canonical datasets from explicit manifest membership."""
+    if mask_variant not in MASK_VARIANTS:
+        raise ValueError(
+            f"mask_variant must be one of {list(MASK_VARIANTS)}, got {mask_variant!r}"
+        )
     dataset_root = Path(dataset_root)
     manifest = load_split_manifest(split_manifest, dataset_root=dataset_root)
     pairs = find_pairs(
         dataset_root / "images" / "render",
-        dataset_root / "images" / "ground",
+        dataset_root / "images" / mask_variant,
     )
     indexed_pairs = {_frame_id(pair[0]): pair for pair in pairs}
 
