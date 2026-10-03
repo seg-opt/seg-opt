@@ -34,5 +34,5 @@ def test_summary_selects_by_validation_miou_and_reports_student_margin():
     summary = render_summary(metrics)
 
     assert "Selected teacher: **mask2former_swinl**" in summary
-    assert "Validation margin over Fast-SCNN: **+0.1300 mIoU**" in summary
+    assert "Validation margin over Fast-SCNN: **+0.1500 mIoU**" in summary
     assert "There is a task-quality margin worth testing with distillation." in summary

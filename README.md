@@ -15,10 +15,10 @@ PCSS integration tests are skipped unless `.env.test` is configured.
 
 ## Active experiment: clean baseline benchmark
 
-The active experiment compares Fast-SCNN with ResNet34–U-Net, SegFormer-B0, a
-frozen DINOv3 ViT-L/16 probe, and Mask2Former Swin-L on clean masks and the
-aligned seed-42 split. Its configurations, smoke job, full array, and selection
-protocol are in `experiments/baselines_benchmark/`. See
+The active experiment compares Fast-SCNN with ResNet34–U-Net, SegFormer
+B0/B2/B4, a frozen DINOv3 ViT-L/16 probe, and Mask2Former Swin-L on clean masks
+and the aligned seed-42 split. Its configurations, smoke job, full array, and
+selection protocol are in `experiments/baselines_benchmark/`. See
 [`experiments/README.md`](experiments/README.md) for the complete experiment map.
 
 Run a checkpoint-preserving local smoke test with:

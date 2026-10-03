@@ -12,6 +12,8 @@ baselines.
 | `fast_scnn.yaml` | Student baseline |
 | `resnet34_unet.yaml` | Teacher candidate |
 | `segformer_b0.yaml` | Teacher candidate |
+| `segformer_b2.yaml` | Teacher candidate |
+| `segformer_b4.yaml` | Teacher candidate |
 | `dinov3_vitl16.yaml` | Teacher candidate |
 | `mask2former_swinl.yaml` | Teacher candidate |
 
@@ -22,7 +24,7 @@ sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
   experiments/baselines_benchmark/smoke.sbatch
 ```
 
-Submit the five-run serial array:
+Submit the seven-run serial array:
 
 ```bash
 sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \

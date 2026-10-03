@@ -18,12 +18,16 @@ BASELINE_MODEL_NAMES = (
     "fast_scnn",
     "resnet34_unet",
     "segformer_b0",
+    "segformer_b2",
+    "segformer_b4",
     "dinov3_vitl16",
     "mask2former_swinl",
 )
 
 DEFAULT_MODEL_IDS = {
     "segformer_b0": "nvidia/mit-b0",
+    "segformer_b2": "nvidia/mit-b2",
+    "segformer_b4": "nvidia/mit-b4",
     "dinov3_vitl16": "facebook/dinov3-vitl16-pretrain-lvd1689m",
     "mask2former_swinl": "facebook/mask2former-swin-large-ade-semantic",
 }
@@ -66,7 +70,7 @@ def load_resnet34_unet(
     return ResNet34UNet(encoder, class_names)
 
 
-def load_segformer_b0(
+def load_segformer(
     model_id: str,
     class_names: Sequence[str],
     pretrained: bool = True,
@@ -91,6 +95,15 @@ def load_segformer_b0(
         )
         model = SegformerForSemanticSegmentation(config)
     return SegFormerSegmenter(model, class_names)
+
+
+def load_segformer_b0(
+    model_id: str,
+    class_names: Sequence[str],
+    pretrained: bool = True,
+) -> SegFormerSegmenter:
+    """Compatibility alias for the original SegFormer-B0 loader."""
+    return load_segformer(model_id, class_names, pretrained=pretrained)
 
 
 def _build_dinov3(
@@ -150,7 +163,7 @@ def load_model(
     model_id: str | None = None,
     ignore_index: int = 255,
 ) -> SemanticSegmenter:
-    """Build one of the five canonical supervised segmentation baselines."""
+    """Build one of the supervised segmentation benchmark models."""
     if model_name not in BASELINE_MODEL_NAMES:
         allowed = ", ".join(BASELINE_MODEL_NAMES)
         raise ValueError(f"unsupported baseline {model_name!r}; choose one of: {allowed}")
@@ -166,8 +179,8 @@ def load_model(
         return FastSCNN(len(names), class_names=names)
     if model_name == "resnet34_unet":
         return load_resnet34_unet(names, pretrained=use_pretrained)
-    if model_name == "segformer_b0":
-        return load_segformer_b0(
+    if model_name in {"segformer_b0", "segformer_b2", "segformer_b4"}:
+        return load_segformer(
             model_id or DEFAULT_MODEL_IDS[model_name],
             names,
             pretrained=use_pretrained,
@@ -190,7 +203,7 @@ def load_model(
 
 
 # Compatibility helpers for existing experiments. The canonical trainer uses
-# load_model above, whose dispatch is intentionally limited to five baselines.
+# load_model above, whose dispatch is intentionally limited to benchmark models.
 def load_mask2former(
     model_id: str,
     num_classes: int,
@@ -274,9 +287,9 @@ def load_student(
     if model_name == "resnet34_unet":
         names = _class_names(num_classes, None)
         return load_resnet34_unet(names, pretrained=pretrained)
-    if model_name == "segformer_b0":
+    if model_name in {"segformer_b0", "segformer_b2", "segformer_b4"}:
         names = _class_names(num_classes, None)
-        return load_segformer_b0(
+        return load_segformer(
             DEFAULT_MODEL_IDS[model_name], names, pretrained=pretrained
         )
 

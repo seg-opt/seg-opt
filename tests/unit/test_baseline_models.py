@@ -75,11 +75,13 @@ class TinyMask2Former(nn.Module):
         )
 
 
-def test_baseline_dispatch_is_limited_to_the_five_reviewed_models():
+def test_baseline_dispatch_is_limited_to_the_seven_benchmark_models():
     assert BASELINE_MODEL_NAMES == (
         "fast_scnn",
         "resnet34_unet",
         "segformer_b0",
+        "segformer_b2",
+        "segformer_b4",
         "dinov3_vitl16",
         "mask2former_swinl",
     )
