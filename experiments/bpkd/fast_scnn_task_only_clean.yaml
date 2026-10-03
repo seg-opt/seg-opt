@@ -5,7 +5,7 @@ model:
 
 data:
   dataset_root: ../../datasets/artificial_lunar_landscape
-  split_manifest: experiments/baselines/split_seed42_aligned.json
+  split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
   class_names: [background, sky, small_rock, large_rock]
   image_height: 512
   image_width: 768
@@ -19,8 +19,8 @@ metrics: {trimap_kernel_size: 7}
 training:
   output_dir: results/bpkd/fast_scnn_clean/task_only/seed42
   epochs: 20
-  batch_size: 1
-  accumulate_grad_batches: 16
+  batch_size: 2
+  accumulate_grad_batches: 8
   learning_rate: 5.0e-4
   backbone_learning_rate: null
   weight_decay: 0.05

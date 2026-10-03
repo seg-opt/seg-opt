@@ -1,9 +1,35 @@
 from collections.abc import Sequence
 
 import torch
-from kornia.losses import dice_loss
 from torch import nn
 from torch.nn import functional as F
+
+
+def _macro_dice_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    class_weights: torch.Tensor,
+    ignore_index: int,
+    eps: float,
+) -> torch.Tensor:
+    """Compute weighted macro Dice loss from segmentation logits."""
+    probabilities = logits.softmax(dim=1)
+    valid = targets != ignore_index
+    safe_targets = targets.masked_fill(~valid, 0)
+    target_one_hot = F.one_hot(
+        safe_targets,
+        num_classes=logits.shape[1],
+    ).movedim(-1, 1).to(dtype=logits.dtype)
+    valid_mask = valid.unsqueeze(1).to(dtype=logits.dtype)
+    probabilities = probabilities * valid_mask
+    target_one_hot = target_one_hot * valid_mask
+
+    intersection = (probabilities * target_one_hot).sum(dim=(2, 3))
+    cardinality = (probabilities + target_one_hot).sum(dim=(2, 3))
+    per_class_loss = 1.0 - 2.0 * intersection / (cardinality + eps)
+    weights = class_weights.to(device=logits.device, dtype=logits.dtype)
+    return (per_class_loss * weights).sum(dim=1).div(weights.sum()).mean()
 
 
 class SegmentationLoss(nn.Module):
@@ -59,13 +85,12 @@ class SegmentationLoss(nn.Module):
             )
             total = total + self.cross_entropy_weight * cross_entropy
         if self.dice_weight:
-            soft_dice = dice_loss(
+            soft_dice = _macro_dice_loss(
                 logits,
                 targets,
-                average="macro",
-                eps=self.dice_eps,
-                weight=self.class_weights.to(logits),
+                class_weights=self.class_weights,
                 ignore_index=self.ignore_index,
+                eps=self.dice_eps,
             )
             total = total + self.dice_weight * soft_dice
         return total

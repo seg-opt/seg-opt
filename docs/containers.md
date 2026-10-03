@@ -160,7 +160,7 @@ sbatch --account=<SERVICE_ID> \
   --export=ALL,IMAGE_PATH,DATA_PATH,REPO_PATH \
   scripts/train.sbatch \
   python -m scripts.train \
-  --config experiments/baseline_resnet34/config.yaml \
+  --config experiments/baselines_benchmark/fast_scnn.yaml \
   --devices 1 \
   --fast-dev-run
 ```

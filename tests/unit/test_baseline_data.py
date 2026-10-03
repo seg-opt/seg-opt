@@ -11,7 +11,6 @@ from PIL import Image
 from src.data.dataset import (
     ALIGNED_SPLIT_MANIFEST,
     ALIGNED_SPLIT_SHA256,
-    CANONICAL_SPLIT_SHA256,
     DATASET_ROOT,
     DEFAULT_SPLIT_MANIFEST,
     LunarDataset,
@@ -235,31 +234,13 @@ def test_dataset_rejects_processors_that_change_geometry(tmp_path: Path) -> None
         dataset[0]
 
 
-def test_canonical_manifest_is_frozen_and_includes_top200() -> None:
+def test_default_manifest_is_the_frozen_clean_aligned_split() -> None:
     dataset_root = Path(DATASET_ROOT)
     if not dataset_root.is_dir():
         pytest.skip("artificial lunar landscape dataset is not available")
 
+    assert DEFAULT_SPLIT_MANIFEST == ALIGNED_SPLIT_MANIFEST
     manifest = load_split_manifest(DEFAULT_SPLIT_MANIFEST, dataset_root=dataset_root)
-    top200 = set((dataset_root / "top200_largerocks_IDs.txt").read_text().split())
-
-    assert manifest.seed == 42
-    assert manifest.sha256 == CANONICAL_SPLIT_SHA256
-    assert manifest.counts == {
-        "train": 7_353,
-        "validation": 920,
-        "test": 920,
-        "total": 9_193,
-    }
-    assert top200 <= set(manifest.all_ids)
-
-
-def test_aligned_manifest_is_frozen_and_excludes_top200() -> None:
-    dataset_root = Path(DATASET_ROOT)
-    if not dataset_root.is_dir():
-        pytest.skip("artificial lunar landscape dataset is not available")
-
-    manifest = load_split_manifest(ALIGNED_SPLIT_MANIFEST, dataset_root=dataset_root)
     top200 = set((dataset_root / "top200_largerocks_IDs.txt").read_text().split())
 
     assert manifest.sha256 == ALIGNED_SPLIT_SHA256

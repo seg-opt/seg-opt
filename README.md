@@ -13,17 +13,19 @@ uv run pytest
 
 PCSS integration tests are skipped unless `.env.test` is configured.
 
-## Canonical baselines
+## Active experiment: clean baseline benchmark
 
-The reviewed baseline set is Fast-SCNN, ResNet34–U-Net, SegFormer-B0, a frozen
-DINOv3 ViT-L/16 linear probe, and Mask2Former Swin-L. Their configurations and
-fixed seed-42 split are in `experiments/baselines/`.
+The active experiment compares Fast-SCNN with ResNet34–U-Net, SegFormer-B0, a
+frozen DINOv3 ViT-L/16 probe, and Mask2Former Swin-L on clean masks and the
+aligned seed-42 split. Its configurations, smoke job, full array, and selection
+protocol are in `experiments/baselines_benchmark/`. See
+[`experiments/README.md`](experiments/README.md) for the complete experiment map.
 
 Run a checkpoint-preserving local smoke test with:
 
 ```bash
 uv run python -m scripts.train \
-  --config experiments/baselines/fast_scnn.yaml \
+  --config experiments/baselines_benchmark/fast_scnn.yaml \
   --fast-dev-run --offline
 ```
 
@@ -31,8 +33,8 @@ Evaluate an existing checkpoint independently with:
 
 ```bash
 uv run python -m scripts.evaluate \
-  --config experiments/baselines/fast_scnn.yaml \
-  --checkpoint results/baselines/fast_scnn/seed42/checkpoints/best.ckpt
+  --config experiments/baselines_benchmark/fast_scnn.yaml \
+  --checkpoint results/baselines_benchmark/fast_scnn/seed42/checkpoints/best.ckpt
 ```
 
 Training writes the resolved config, split manifest, best checkpoint, log, and
@@ -50,11 +52,16 @@ export DATA_PATH="$HOME/<SERVICE_ID>/project_data/datasets"
 sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
   scripts/train.sbatch \
   python -m scripts.train \
-  --config experiments/baselines/fast_scnn.yaml \
+  --config experiments/baselines_benchmark/fast_scnn.yaml \
   --devices 1 \
   --fast-dev-run
 ```
 
-The canonical sequential array and smoke jobs are available under
-`experiments/baselines/`; both delegate container execution to
-`scripts/train.sbatch`.
+Run the active smoke job first, then the benchmark array:
+
+```bash
+sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
+  experiments/baselines_benchmark/smoke.sbatch
+sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
+  experiments/baselines_benchmark/train.sbatch
+```

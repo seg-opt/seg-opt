@@ -12,11 +12,11 @@ uv run python -m pytest tests/unit -v
 
 ## Integration tests
 
-The cluster tests use the credentials in your `.env.test` (by default) and run their remote commands **inside the service directory** named by `SERVICE_ID` (a folder in the cluster home, e.g. `~/pl1234-01`). The data pipeline integration test uses the dataset configured in `experiments/baseline_resnet34/config.yaml`.
+The cluster tests use the credentials in your `.env.test` (by default) and run their remote commands **inside the service directory** named by `SERVICE_ID` (a folder in the cluster home, e.g. `~/pl1234-01`). The data pipeline integration test uses the dataset configured in `experiments/baselines_benchmark/resnet34_unet.yaml`.
 
 ### Prerequisites
 
-- The lunar dataset at the path configured in `experiments/baseline_resnet34/config.yaml` for the data pipeline test.
+- The lunar dataset at the path configured in `experiments/baselines_benchmark/resnet34_unet.yaml` for the data pipeline test.
 - A configured `.env.test` (copy `.env.example` to `.env.test` and fill it in, including `SERVICE_ID`). If it is missing or incomplete, the tests **skip** rather than fail.
 - The OpenSSH client (`ssh`) on your PATH.
 
@@ -90,7 +90,7 @@ sbatch --account=<SERVICE_ID> \
   --export=ALL,IMAGE_PATH,DATA_PATH,REPO_PATH \
   scripts/train.sbatch \
   python -m scripts.train \
-  --config experiments/baseline_resnet34/config.yaml \
+  --config experiments/baselines_benchmark/fast_scnn.yaml \
   --devices 1 \
   --fast-dev-run
 ```

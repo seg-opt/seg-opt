@@ -8,21 +8,21 @@ from src.utils.utils import load_config
 
 def test_configured_real_dataset_and_print_entries():
     """Validate the real dataset; run pytest with -s to display sample summaries."""
-    config = load_config("experiments/baselines/resnet34_unet.yaml").data
+    config = load_config("experiments/baselines_benchmark/resnet34_unet.yaml").data
     root = Path(config.dataset_root)
 
     assert root.is_dir()
     image_dir = root / "images" / "render"
-    mask_dir = root / "images" / "ground"
+    mask_dir = root / "images" / config.mask_variant
     pairs = find_pairs(image_dir, mask_dir)
     manifest = load_split_manifest(config.split_manifest, dataset_root=root)
 
     assert len(pairs) == 9_766
     assert manifest.counts == {
-        "train": 7_353,
-        "validation": 920,
-        "test": 920,
-        "total": 9_193,
+        "train": 7_200,
+        "validation": 896,
+        "test": 897,
+        "total": 8_993,
     }
     indexed = {image.stem[-4:]: (image, mask) for image, mask in pairs}
 

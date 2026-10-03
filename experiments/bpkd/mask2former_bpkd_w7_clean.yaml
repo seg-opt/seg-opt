@@ -6,7 +6,7 @@ model:
 
 data:
   dataset_root: ../../datasets/artificial_lunar_landscape
-  split_manifest: experiments/baselines/split_seed42_aligned.json
+  split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
   class_names: [background, sky, small_rock, large_rock]
   image_height: 512
   image_width: 768

@@ -1,8 +1,13 @@
 # Clean-mask BPKD ablation
 
+> **Deferred:** do not submit this ablation suite until the clean baseline
+> benchmark in `experiments/baselines_benchmark/` has selected a teacher with a
+> positive validation margin over Fast-SCNN.
+
 This experiment distils a clean/aligned Mask2Former-SwinL teacher into
-Fast-SCNN. All student variants use physical batch 1 and gradient accumulation
-16 so BatchNorm and effective batch size are matched.
+Fast-SCNN. All student variants use physical batch 2 and gradient accumulation
+8, preserving an effective batch size of 16 while giving Fast-SCNN's deepest
+BatchNorm layer more than one value per channel.
 
 Train the teacher first:
 
@@ -10,7 +15,6 @@ Train the teacher first:
 sbatch --account=<SERVICE_ID> scripts/train.sbatch \
   --image-path /path/to/development.sif \
   --data-path /mnt/storage_6/project_data/pl1200-01/datasets \
-  --python-path /cache/runtime-deps/kornia-0.8.2-py313 -- \
   python -m scripts.train \
   --config experiments/bpkd/mask2former_teacher_clean.yaml \
   --devices 1

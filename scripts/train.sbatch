@@ -2,8 +2,7 @@
 # Submit with either exported variables or explicit paths, for example:
 # sbatch --account=<grant-id> scripts/train.sbatch \
 #   --image-path /path/to/development.sif --data-path /path/to/datasets \
-#   --python-path /cache/runtime-deps/kornia-0.8.2-py313 -- \
-#   python -m scripts.train --config experiments/baselines/fast_scnn.yaml --devices 1
+#   python -m scripts.train --config experiments/baselines_benchmark/fast_scnn.yaml --devices 1
 #SBATCH --job-name=seg-opt-train
 #SBATCH --partition=proxima
 #SBATCH --constraint=h100
@@ -80,7 +79,7 @@ trap 'rm -rf "$job_tmp"' EXIT
 
 if (($# == 0)); then
     set -- python -m scripts.train \
-        --config experiments/baseline_resnet34/config.yaml \
+        --config experiments/baselines_benchmark/fast_scnn.yaml \
         --devices 1
 fi
 

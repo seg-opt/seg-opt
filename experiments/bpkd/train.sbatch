@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Submit only after mask2former_teacher_clean.yaml has produced best.ckpt.
+# Deferred: submit only after the clean benchmark selects a teacher and its
+# checkpoint is propagated into the student configurations.
 #SBATCH --job-name=lunar-bpkd
 #SBATCH --account=pl1200-01
 #SBATCH --partition=proxima

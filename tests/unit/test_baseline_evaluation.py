@@ -51,10 +51,11 @@ class TinyDataset(Dataset):
 
 
 def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path):
-    config = load_config("experiments/baselines/fast_scnn.yaml")
+    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
     config = replace(
         config,
         training=replace(config.training, output_dir=str(tmp_path)),
+        metrics=replace(config.metrics, trimap_kernel_size=None),
     )
     write_resolved_config(config, tmp_path / "config.yaml")
     model = TinyBaseline()
@@ -114,7 +115,7 @@ def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path):
     assert artifact["schema_version"] == 2
     assert artifact["run_kind"] == "smoke"
     assert artifact["selection"]["metric"] == "val/miou"
-    assert artifact["data"]["mask_variant"] == "ground"
+    assert artifact["data"]["mask_variant"] == "clean"
     assert artifact["data"]["split_sha256"] == "manifest-sha256"
     assert set(artifact["test"]["per_class"]) == set(CLASS_NAMES)
     assert len(artifact["test"]["confusion_matrix"]) == 4
@@ -122,7 +123,7 @@ def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path):
 
 
 def test_artifact_preparation_refuses_to_mix_runs(tmp_path):
-    config = load_config("experiments/baselines/fast_scnn.yaml")
+    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
     output_dir = tmp_path / "run"
     output_dir.mkdir()
     (output_dir / "old-metrics.json").write_text("{}", encoding="utf-8")

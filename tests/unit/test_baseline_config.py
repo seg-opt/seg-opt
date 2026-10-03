@@ -15,22 +15,30 @@ from src.utils.utils import (
 )
 
 
-def test_all_canonical_baseline_configs_are_valid_and_distillation_free():
-    config_paths = sorted(Path("experiments/baselines").glob("*.yaml"))
-
+def test_baselines_benchmark_configs_match_the_comparison_protocol():
+    config_paths = sorted(
+        Path("experiments/baselines_benchmark").glob("*.yaml")
+    )
     configs = [load_config(path) for path in config_paths]
 
     assert {config.model.name for config in configs} == BASELINE_NAMES
-    assert all(config.training.seed == 42 for config in configs)
+    assert all(config.data.mask_variant == "clean" for config in configs)
     assert all(
-        config.training.batch_size * config.training.accumulate_grad_batches == 16
+        Path(config.data.split_manifest).name == "split_seed42_aligned.json"
         for config in configs
     )
+    assert all(config.metrics.trimap_kernel_size == 7 for config in configs)
+    assert all(config.training.seed == 42 for config in configs)
     assert all(config.data.image_height == 512 for config in configs)
     assert all(config.data.image_width == 768 for config in configs)
     assert all(Path(config.data.dataset_root).is_absolute() for config in configs)
     assert all(Path(config.data.split_manifest).is_absolute() for config in configs)
     assert all(Path(config.training.output_dir).is_absolute() for config in configs)
+    assert all(
+        config.training.batch_size * config.training.accumulate_grad_batches == 16
+        for config in configs
+    )
+    assert all(config.distillation is None for config in configs)
     for path in config_paths:
         contents = path.read_text(encoding="utf-8")
         assert "distillation:" not in contents
@@ -39,7 +47,7 @@ def test_all_canonical_baseline_configs_are_valid_and_distillation_free():
 
 
 def test_resolved_configuration_round_trip(tmp_path):
-    config = load_config("experiments/baselines/fast_scnn.yaml")
+    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
     resolved_path = tmp_path / "config.yaml"
 
     write_resolved_config(config, resolved_path)
@@ -54,7 +62,7 @@ def test_distillation_configuration_is_validated_and_round_trips(tmp_path):
 model: {name: fast_scnn, pretrained: false}
 data:
   dataset_root: datasets/artificial_lunar_landscape
-  split_manifest: experiments/baselines/split_seed42_aligned.json
+  split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
   mask_variant: clean
 training:
   output_dir: results/bpkd/test
@@ -95,8 +103,8 @@ def test_checked_in_bpkd_configs_are_clean_and_match_the_declared_matrix():
     students = [config for config in configs if config.model.name == "fast_scnn"]
     assert len(students) == 8
     assert all(
-        config.training.batch_size == 1
-        and config.training.accumulate_grad_batches == 16
+        config.training.batch_size == 2
+        and config.training.accumulate_grad_batches == 8
         for config in students
     )
     mask2former_students = [
@@ -119,7 +127,7 @@ def test_config_rejects_unknown_distillation_fields(tmp_path):
 model: {name: fast_scnn, pretrained: false}
 data:
   dataset_root: datasets/artificial_lunar_landscape
-  split_manifest: experiments/baselines/split_seed42_aligned.json
+  split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
 training:
   output_dir: results/bpkd/test
   batch_size: 1
@@ -177,11 +185,19 @@ def test_teacher_loader_validates_provenance_and_restores_only_model_weights(
     with pytest.raises(ValueError, match="mask variants"):
         load_distillation_teacher(wrong_mask_variant)
 
+    wrong_manifest_path = tmp_path / "wrong_split.json"
+    reference_manifest = Path(
+        "experiments/baselines_benchmark/split_seed42_aligned.json"
+    )
+    wrong_manifest_path.write_text(
+        reference_manifest.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
     wrong_manifest = replace(
         config,
         data=replace(
             config.data,
-            split_manifest=str(Path("experiments/baselines/split_seed42.json").resolve()),
+            split_manifest=str(wrong_manifest_path),
         ),
     )
     with pytest.raises(ValueError, match="split manifests"):

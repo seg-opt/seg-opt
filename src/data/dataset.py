@@ -21,16 +21,16 @@ QUALITY_EXCLUDED_ID_FILES = (
     "mismatch_IDs.txt",
     "shadow_IDs.txt",
 )
-# Kept as a compatibility name. The canonical baseline excludes only quality failures.
+# Kept as a compatibility name. The benchmark uses the clean/aligned split.
 EXCLUDED_ID_FILES = QUALITY_EXCLUDED_ID_FILES
 INCLUDED_ID_FILES = ("top200_largerocks_IDs.txt",)
-DEFAULT_SPLIT_MANIFEST = (
-    Path(__file__).resolve().parents[2] / "experiments" / "baselines" / "split_seed42.json"
+ALIGNED_SPLIT_MANIFEST = (
+    Path(__file__).resolve().parents[2]
+    / "experiments"
+    / "baselines_benchmark"
+    / "split_seed42_aligned.json"
 )
-CANONICAL_SPLIT_SHA256 = "accaa362c675bfdd65b1a44c8c9cd19dba70ba41642fb23c67c544655914d79f"
-ALIGNED_SPLIT_MANIFEST = DEFAULT_SPLIT_MANIFEST.with_name(
-    "split_seed42_aligned.json"
-)
+DEFAULT_SPLIT_MANIFEST = ALIGNED_SPLIT_MANIFEST
 ALIGNED_SPLIT_SHA256 = "e7486b858ee776695b9e5fbdd561ac072e37999d59e801e406c8a299d778c8ab"
 BACKGROUND_THRESHOLD = 10
 
@@ -220,10 +220,9 @@ def load_split_manifest(
     path = Path(path)
     raw = path.read_bytes()
     sha256 = hashlib.sha256(raw).hexdigest()
-    expected_sha256 = {
-        DEFAULT_SPLIT_MANIFEST.resolve(): CANONICAL_SPLIT_SHA256,
-        ALIGNED_SPLIT_MANIFEST.resolve(): ALIGNED_SPLIT_SHA256,
-    }.get(path.resolve())
+    expected_sha256 = {DEFAULT_SPLIT_MANIFEST.resolve(): ALIGNED_SPLIT_SHA256}.get(
+        path.resolve()
+    )
     if expected_sha256 is not None and sha256 != expected_sha256:
         raise ValueError(
             "known split manifest checksum mismatch: "

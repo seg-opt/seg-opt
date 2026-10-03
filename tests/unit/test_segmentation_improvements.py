@@ -72,6 +72,28 @@ def test_segmentation_loss_rewards_correct_rare_class_predictions_and_ignores_pa
     assert torch.isfinite(correct_total)
 
 
+def test_segmentation_loss_uses_weighted_macro_dice():
+    logits = torch.log(
+        torch.tensor([[[[0.8, 0.3, 0.99]], [[0.2, 0.7, 0.01]]]])
+    )
+    targets = torch.tensor([[[0, 1, 255]]])
+    loss = SegmentationLoss(
+        num_classes=2,
+        class_weights=(0.25, 0.75),
+        cross_entropy_weight=0,
+        dice_weight=1,
+    )
+
+    actual = loss(logits, targets)
+
+    expected = 0.25 * (1 - 1.6 / 2.1) + 0.75 * (1 - 1.4 / 1.9)
+    torch.testing.assert_close(actual, torch.tensor(expected))
+
+    changed_ignored_logits = logits.clone()
+    changed_ignored_logits[:, :, :, 2] = torch.tensor([[[-100.0], [100.0]]])
+    torch.testing.assert_close(actual, loss(changed_ignored_logits, targets))
+
+
 def test_trainer_logs_losses_and_segmentation_metrics_for_wandb():
     module = TrainerModule(
         teacher=None,
@@ -142,8 +164,8 @@ def test_configurable_segmentation_heads_preserve_spatial_shape(head_type):
     assert head(torch.randn(2, 12, 8, 9)).shape == (2, 4, 8, 9)
 
 
-def test_canonical_dinov3_config_is_a_full_frame_frozen_linear_probe():
-    config = load_config("experiments/baselines/dinov3_vitl16.yaml")
+def test_benchmark_dinov3_config_is_a_full_frame_frozen_linear_probe():
+    config = load_config("experiments/baselines_benchmark/dinov3_vitl16.yaml")
 
     assert config.model.name == "dinov3_vitl16"
     assert config.model.model_id == "facebook/dinov3-vitl16-pretrain-lvd1689m"
