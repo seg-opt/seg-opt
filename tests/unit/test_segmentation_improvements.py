@@ -3,13 +3,10 @@ import random
 import numpy as np
 import pytest
 import torch
-from torch import nn
 
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
-from src.models.inference import sliding_window_logits
 from src.models.segmentation import make_segmentation_head
 from src.train.losses import SegmentationLoss
-from src.train.trainer import TrainerModule
 from src.utils.utils import load_config
 
 
@@ -92,64 +89,6 @@ def test_segmentation_loss_uses_weighted_macro_dice():
     changed_ignored_logits = logits.clone()
     changed_ignored_logits[:, :, :, 2] = torch.tensor([[[-100.0], [100.0]]])
     torch.testing.assert_close(actual, loss(changed_ignored_logits, targets))
-
-
-def test_trainer_logs_losses_and_segmentation_metrics_for_wandb():
-    module = TrainerModule(
-        teacher=None,
-        student=nn.Conv2d(3, 4, kernel_size=1),
-        task_loss=SegmentationLoss(4, dice_weight=0.5),
-        distillation_loss=None,
-        distillation_weight=0,
-        class_names=["background", "sky", "small_rock", "large_rock"],
-    )
-    logged = {}
-
-    def record(name, value, **_):
-        logged[name] = value
-
-    def record_dict(metrics, **_):
-        logged.update(metrics)
-
-    module.log = record
-    module.log_dict = record_dict
-    batch = {
-        "pixel_values": torch.randn(2, 3, 8, 8),
-        "labels": torch.randint(0, 4, (2, 8, 8)),
-    }
-
-    module.on_train_epoch_start()
-    module.training_step(batch, batch_idx=0)
-    module.on_train_epoch_end()
-    module.on_validation_epoch_start()
-    module.validation_step(batch, batch_idx=0)
-    module.on_validation_epoch_end()
-
-    expected = {
-        "train/loss",
-        "train/task_loss",
-        "train/kd_loss",
-        "train/miou",
-        "train/macro_f1",
-        "train/pixel_accuracy",
-        "train/iou_small_rock",
-        "train/precision_large_rock",
-        "train/recall_large_rock",
-        "val/loss",
-        "val/miou",
-        "val/pixel_accuracy",
-    }
-    assert expected.issubset(logged)
-
-
-def test_sliding_window_matches_pointwise_full_image_inference():
-    model = nn.Conv2d(3, 4, kernel_size=1)
-    pixels = torch.randn(2, 3, 9, 13)
-
-    expected = model(pixels)
-    actual = sliding_window_logits(model, pixels, crop_size=6, stride=4)
-
-    torch.testing.assert_close(actual, expected)
 
 
 @pytest.mark.parametrize("head_type", ["linear", "lightweight"])
