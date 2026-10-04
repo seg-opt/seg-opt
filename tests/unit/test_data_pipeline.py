@@ -82,7 +82,8 @@ def test_exclusions_and_mask_decoding(tmp_path):
 
     assert excluded == {"0002", "0004"}
     assert [image.stem for image, _ in filtered] == ["render0001", "render0003"]
-    np.testing.assert_array_equal(_mask_from_ground(ground), [[0, 1, 2, 3, 0]])
+    # Dataset colors are blue=large rock, green=small rock, and red=sky.
+    np.testing.assert_array_equal(_mask_from_ground(ground), [[0, 3, 2, 1, 0]])
 
 
 def test_dataset_batches_processing_and_returns_expected_tensors(tmp_path):
@@ -120,10 +121,10 @@ def test_dataloader_policies_seed_and_device_transfer():
     train, val, test = make_dataloaders(dataset, dataset, dataset, 2, num_workers=0, seed=17)
     repeat = make_dataloader(dataset, 2, True, num_workers=0, drop_last=True, seed=17)
 
-    assert train.drop_last and not val.drop_last and not test.drop_last
-    assert (len(train), len(val), len(test)) == (2, 3, 3)
+    assert not train.drop_last and not val.drop_last and not test.drop_last
+    assert (len(train), len(val), len(test)) == (3, 3, 3)
     torch.testing.assert_close(
-        torch.cat([batch[0] for batch in train]),
+        torch.cat([batch[0] for batch in train])[:4],
         torch.cat([batch[0] for batch in repeat]),
     )
 

@@ -40,6 +40,6 @@ torchvision = { index = "pytorch-cu130" }
 
 [tool.pytest.ini_options]
 minversion = "8.4"
-addopts = "-ra -q"
+addopts = "-ra -q --import-mode=importlib"
 pythonpath = ["."]
 testpaths = ["tests"]
