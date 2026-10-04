@@ -72,27 +72,6 @@ def make_segmentation_head(
     raise ValueError(f"unsupported segmentation head {head_type!r}")
 
 
-class BackboneSegmenter(SemanticSegmenter):
-    def __init__(self, backbone: nn.Module, in_channels: int, num_classes: int):
-        super().__init__([str(index) for index in range(num_classes)])
-        self.backbone = backbone
-        self.classifier = nn.Conv2d(in_channels, num_classes, kernel_size=1)
-
-    def encoder_parameters(self) -> Iterable[nn.Parameter]:
-        return self.backbone.parameters()
-
-    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
-        output_size = pixel_values.shape[-2:]
-        features = self.backbone(pixel_values)
-        logits = self.classifier(features)
-        return F.interpolate(
-            logits,
-            size=output_size,
-            mode="bilinear",
-            align_corners=False,
-        )
-
-
 class DINOv3Segmenter(SemanticSegmenter):
     """Linear semantic-segmentation head over dense DINOv3 features."""
 
@@ -365,14 +344,3 @@ class Mask2FormerSegmenter(SemanticSegmenter):
             raise RuntimeError("Mask2Former did not return its native training loss")
         scores = self._scores_from_outputs(outputs, images.shape[-2:])
         return outputs.loss, scores
-
-
-class QuerySegmenter(nn.Module):
-    def __init__(self, model: nn.Module):
-        super().__init__()
-        self.model = model
-
-    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError(
-            "query-based segmentation teachers are not implemented yet"
-        )

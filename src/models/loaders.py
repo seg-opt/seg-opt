@@ -1,12 +1,8 @@
 from collections.abc import Sequence
 
-from torch import nn
-
 from src.models.fast_scnn import FastSCNN
-from src.models.processors import DINOv3SegmentationProcessor
 from src.models.resnet_unet import ResNet34UNet
 from src.models.segmentation import (
-    BackboneSegmenter,
     DINOv3Segmenter,
     Mask2FormerSegmenter,
     SegFormerSegmenter,
@@ -95,15 +91,6 @@ def load_segformer(
         )
         model = SegformerForSemanticSegmentation(config)
     return SegFormerSegmenter(model, class_names)
-
-
-def load_segformer_b0(
-    model_id: str,
-    class_names: Sequence[str],
-    pretrained: bool = True,
-) -> SegFormerSegmenter:
-    """Compatibility alias for the original SegFormer-B0 loader."""
-    return load_segformer(model_id, class_names, pretrained=pretrained)
 
 
 def _build_dinov3(
@@ -200,115 +187,3 @@ def load_model(
         names,
         ignore_index=ignore_index,
     )
-
-
-# Compatibility helpers for existing experiments. The canonical trainer uses
-# load_model above, whose dispatch is intentionally limited to benchmark models.
-def load_mask2former(
-    model_id: str,
-    num_classes: int,
-    pretrained_head: bool = True,
-) -> tuple[nn.Module, object]:
-    del pretrained_head
-    from transformers import AutoImageProcessor
-
-    names = _class_names(num_classes, None)
-    model = _build_mask2former(model_id, names)
-    return model, AutoImageProcessor.from_pretrained(model_id)
-
-
-def load_dinov3(
-    model_id: str,
-    num_classes: int,
-    freeze_backbone: bool = True,
-    head_type: str = "linear",
-    head_batch_norm: bool = True,
-    head_hidden_channels: int = 256,
-    head_dropout: float = 0.1,
-    unfreeze_last_blocks: int = 0,
-) -> tuple[nn.Module, object]:
-    from transformers import AutoImageProcessor
-
-    names = _class_names(num_classes, None)
-    model = _build_dinov3(
-        model_id=model_id,
-        class_names=names,
-        freeze_backbone=freeze_backbone,
-        head_type=head_type,
-        head_batch_norm=head_batch_norm,
-        head_hidden_channels=head_hidden_channels,
-        head_dropout=head_dropout,
-        unfreeze_last_blocks=unfreeze_last_blocks,
-    )
-    image_processor = AutoImageProcessor.from_pretrained(model_id)
-    return model, DINOv3SegmentationProcessor(image_processor)
-
-
-def load_sam3(
-    model_id: str,
-    class_prompts: Sequence[str],
-) -> tuple[nn.Module, object]:
-    del model_id, class_prompts
-    raise NotImplementedError("SAM3 segmentation loader is not implemented yet")
-
-
-def _load_torchvision_backbone(
-    model_name: str,
-    pretrained: bool,
-) -> tuple[nn.Module, int]:
-    from torchvision import models
-
-    model = models.get_model(
-        model_name,
-        weights="DEFAULT" if pretrained else None,
-    )
-    if model_name.startswith("resnet"):
-        backbone = nn.Sequential(*list(model.children())[:-2])
-        return backbone, model.fc.in_features
-
-    backbone = model.features
-    first_linear = next(
-        layer for layer in model.classifier.modules() if isinstance(layer, nn.Linear)
-    )
-    return backbone, first_linear.in_features
-
-
-def load_student(
-    model_name: str,
-    num_classes: int,
-    pretrained: bool = True,
-) -> nn.Module:
-    if model_name == "fast_scnn":
-        if pretrained:
-            raise ValueError(
-                "Fast-SCNN does not have pretrained weights; set pretrained=false"
-            )
-        return FastSCNN(num_classes)
-    if model_name == "resnet34_unet":
-        names = _class_names(num_classes, None)
-        return load_resnet34_unet(names, pretrained=pretrained)
-    if model_name in {"segformer_b0", "segformer_b2", "segformer_b4"}:
-        names = _class_names(num_classes, None)
-        return load_segformer(
-            DEFAULT_MODEL_IDS[model_name], names, pretrained=pretrained
-        )
-
-    backbone, in_channels = _load_torchvision_backbone(model_name, pretrained)
-    return BackboneSegmenter(backbone, in_channels, num_classes)
-
-
-def load_teacher(
-    model_name: str,
-    model_id: str,
-    num_classes: int,
-    class_prompts: Sequence[str] | None = None,
-) -> tuple[nn.Module, object]:
-    if model_name == "mask2former":
-        return load_mask2former(model_id, num_classes)
-    if model_name == "dinov3":
-        return load_dinov3(model_id, num_classes)
-    if model_name == "sam3":
-        if class_prompts is None:
-            raise ValueError("SAM3 requires one text prompt per class")
-        return load_sam3(model_id, class_prompts)
-    raise ValueError(f"unsupported teacher {model_name!r}")
