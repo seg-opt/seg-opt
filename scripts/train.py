@@ -28,6 +28,11 @@ def parse_args() -> argparse.Namespace:
         help="run one batch per stage while retaining and restoring best.ckpt",
     )
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        help="stop after this many optimizer steps; useful for short profiling runs",
+    )
     parser.add_argument("--offline", action="store_true", help="disable W&B")
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
@@ -58,6 +63,8 @@ def _checkpoint_callback(trainer: L.Trainer) -> ModelCheckpoint:
 
 def main() -> None:
     args = parse_args()
+    if args.max_steps is not None and args.max_steps <= 0:
+        raise ValueError("--max-steps must be positive")
     config = load_config(args.config)
     output_dir = _output_directory(
         args,
@@ -84,6 +91,8 @@ def main() -> None:
         devices=args.devices,
         accumulate_grad_batches=config.training.accumulate_grad_batches,
         log_every_n_steps=config.training.logging_steps,
+        max_steps=args.max_steps,
+        enable_nvtx_ranges=os.getenv("SEG_OPT_NVTX_RANGES") == "1",
         fast_dev_run=args.fast_dev_run,
         enable_wandb=not args.offline,
     )

@@ -12,7 +12,7 @@ from torch.nn.modules.module import _IncompatibleKeys
 
 from src.distillation.bpkd import DistillationLossResult
 from src.train.metrics import SegmentationMetrics
-from src.train.profiling import GpuStatsCallback
+from src.train.profiling import GpuStatsCallback, NvtxRangesCallback
 from src.utils.logging import make_wandb_logger
 
 
@@ -479,6 +479,8 @@ def create_trainer(
     devices: int | list[int] | str = "auto",
     accumulate_grad_batches: int = 1,
     log_every_n_steps: int = 50,
+    max_steps: int | None = None,
+    enable_nvtx_ranges: bool = False,
     profile: bool = False,
     profiler: Any = None,
     fast_dev_run: bool = False,
@@ -491,6 +493,8 @@ def create_trainer(
     """
     if accumulate_grad_batches <= 0:
         raise ValueError("accumulate_grad_batches must be positive")
+    if max_steps is not None and max_steps <= 0:
+        raise ValueError("max_steps must be positive when specified")
 
     output_dir = Path(output_dir)
     callbacks: list[Callback] = [
@@ -509,12 +513,15 @@ def create_trainer(
         callbacks.append(LearningRateMonitor(logging_interval="step"))
     if profile:
         callbacks.append(GpuStatsCallback(every_n_steps=log_every_n_steps))
+    if enable_nvtx_ranges:
+        callbacks.append(NvtxRangesCallback())
 
     return L.Trainer(
         default_root_dir=output_dir,
         accelerator="auto",
         devices=devices,
         max_epochs=1 if fast_dev_run else max_epochs,
+        max_steps=max_steps if max_steps is not None else -1,
         precision=precision,
         accumulate_grad_batches=accumulate_grad_batches,
         gradient_clip_val=1.0,

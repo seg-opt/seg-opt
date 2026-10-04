@@ -31,6 +31,100 @@ class GpuStatsCallback(Callback):
         pl_module.log_dict(metrics, on_step=True, on_epoch=False, logger=True)
 
 
+class NvtxRangesCallback(Callback):
+    """Add coarse, balanced NVTX ranges around Lightning lifecycle hooks.
+
+    This keeps trace instrumentation outside the model and its training steps.
+    Range names intentionally omit batch indices, which keeps an Nsight Systems
+    timeline readable even for long runs.
+    """
+
+    def __init__(self) -> None:
+        self._ranges: list[str] = []
+
+    def _push(self, name: str) -> None:
+        if not torch.cuda.is_available():
+            return
+        torch.cuda.nvtx.range_push(name)
+        self._ranges.append(name)
+
+    def _pop(self, expected: str) -> None:
+        if not self._ranges or self._ranges[-1] != expected:
+            return
+        torch.cuda.nvtx.range_pop()
+        self._ranges.pop()
+
+    def _close_all(self) -> None:
+        while self._ranges:
+            torch.cuda.nvtx.range_pop()
+            self._ranges.pop()
+
+    def on_fit_start(self, trainer: Trainer, pl_module) -> None:
+        self._push("seg-opt/fit")
+
+    def on_fit_end(self, trainer: Trainer, pl_module) -> None:
+        self._close_all()
+
+    def on_exception(self, trainer: Trainer, pl_module, exception: BaseException) -> None:
+        self._close_all()
+
+    def on_train_epoch_start(self, trainer: Trainer, pl_module) -> None:
+        self._push("seg-opt/train_epoch")
+
+    def on_train_epoch_end(self, trainer: Trainer, pl_module) -> None:
+        self._pop("seg-opt/train_epoch")
+
+    def on_train_batch_start(self, trainer: Trainer, pl_module, batch, batch_idx: int) -> None:
+        self._push("seg-opt/train_batch")
+
+    def on_train_batch_end(self, trainer: Trainer, pl_module, outputs, batch, batch_idx: int) -> None:
+        self._pop("seg-opt/train_batch")
+
+    def on_validation_epoch_start(self, trainer: Trainer, pl_module) -> None:
+        self._push("seg-opt/validation_epoch")
+
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module) -> None:
+        self._pop("seg-opt/validation_epoch")
+
+    def on_validation_batch_start(
+        self, trainer: Trainer, pl_module, batch, batch_idx: int, dataloader_idx: int = 0
+    ) -> None:
+        self._push("seg-opt/validation_batch")
+
+    def on_validation_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module,
+        outputs,
+        batch,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self._pop("seg-opt/validation_batch")
+
+    def on_test_epoch_start(self, trainer: Trainer, pl_module) -> None:
+        self._push("seg-opt/test_epoch")
+
+    def on_test_epoch_end(self, trainer: Trainer, pl_module) -> None:
+        self._pop("seg-opt/test_epoch")
+
+    def on_test_batch_start(
+        self, trainer: Trainer, pl_module, batch, batch_idx: int, dataloader_idx: int = 0
+    ) -> None:
+        self._push("seg-opt/test_batch")
+
+    def on_test_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module,
+        outputs,
+        batch,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self._pop("seg-opt/test_batch")
+
+
 def make_profiler(profile_dir: str | Path) -> PyTorchProfiler:
     profile_dir = Path(profile_dir)
     profile_dir.mkdir(parents=True, exist_ok=True)

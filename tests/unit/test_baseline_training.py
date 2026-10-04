@@ -14,6 +14,7 @@ from src.train.trainer import (
     create_trainer,
     parameter_groups,
 )
+from src.train.profiling import NvtxRangesCallback
 
 
 CLASS_NAMES = ["background", "sky", "small_rock", "large_rock"]
@@ -217,6 +218,32 @@ def test_create_trainer_selects_one_best_miou_checkpoint_and_accumulates(
     assert checkpoint.save_top_k == 1
     assert checkpoint.filename == "best"
     assert trainer.accumulate_grad_batches == 8
+
+
+def test_create_trainer_honors_explicit_max_steps(tmp_path) -> None:
+    trainer = create_trainer(
+        tmp_path,
+        max_epochs=20,
+        max_steps=25,
+        precision="32-true",
+        devices=1,
+        enable_wandb=False,
+    )
+
+    assert trainer.max_steps == 25
+
+
+def test_create_trainer_adds_nvtx_callback_only_when_requested(tmp_path) -> None:
+    trainer = create_trainer(
+        tmp_path,
+        max_epochs=1,
+        precision="32-true",
+        devices=1,
+        enable_nvtx_ranges=True,
+        enable_wandb=False,
+    )
+
+    assert any(isinstance(callback, NvtxRangesCallback) for callback in trainer.callbacks)
 
 
 def test_smoke_mode_runs_one_batch_and_preserves_best_checkpoint(tmp_path) -> None:

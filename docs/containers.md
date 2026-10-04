@@ -165,7 +165,22 @@ sbatch --account=<SERVICE_ID> \
   --fast-dev-run
 ```
 
-Omit the command after `scripts/train.sbatch` for the default baseline run. Add `--profile --profiler-dir /output/profiler` only when profiling is needed. Record both the development SIF checksum and mounted source commit for every result; they are independent provenance inputs.
+Omit the command after `scripts/train.sbatch` for the default baseline run. To collect a short Nsight Systems trace, export `NSYS_PROFILE=1`; the host-side `nsys` executable must be available on the allocated compute node. The launcher writes a `.nsys-rep` file to `results/nsys/` by default, after a 60-second delay and for 45 seconds. Override those timings with `NSYS_DELAY_SECONDS` and `NSYS_DURATION_SECONDS`. A 300-step profiling job can be submitted with:
+
+```bash
+export NSYS_PROFILE=1 NSYS_DELAY_SECONDS=20 NSYS_DURATION_SECONDS=45
+sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH,NSYS_PROFILE,NSYS_DELAY_SECONDS,NSYS_DURATION_SECONDS \
+  scripts/train.sbatch \
+  python -m scripts.train \
+  --config experiments/baselines_benchmark/fast_scnn.yaml \
+  --devices 1 \
+  --max-steps 300 \
+  --offline
+```
+
+`--max-steps` makes this a bounded diagnostic run, not a comparable training result. Nsight Systems runs automatically add coarse NVTX ranges for fit, epoch, and train/validation/test batches; these make GPU gaps visible without instrumenting model code. Record both the development SIF checksum and mounted source commit for every result; they are independent provenance inputs.
+
+For an Nsight Compute roofline report of one post-warmup CUDA kernel, use `NCU_PROFILE=1` instead. It writes a `.ncu-rep` file to `results/ncu/`; open this file in the separate Nsight Compute desktop application (not Nsight Systems). `NCU_LAUNCH_SKIP_BEFORE_MATCH` and `NCU_LAUNCH_COUNT` control the small number of kernels collected.
 
 ## Planned immutable experiment images
 
