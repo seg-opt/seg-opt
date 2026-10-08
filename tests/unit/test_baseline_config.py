@@ -126,6 +126,27 @@ def test_segformer_b4_to_fast_scnn_logit_distillation_config():
     )
 
 
+def test_fast_scnn_batch8_control_matches_the_distillation_student_recipe():
+    control = load_config("experiments/logit_distillation/fast_scnn_batch8_control.yaml")
+    distilled = load_config(
+        "experiments/logit_distillation/fast_scnn_from_segformer_b4.yaml"
+    )
+
+    assert control.distillation is None
+    assert control.model == distilled.model
+    assert control.data == distilled.data
+    assert control.loss == distilled.loss
+    assert control.metrics == distilled.metrics
+    assert control.training.batch_size == 8
+    assert control.training.accumulate_grad_batches == 2
+    assert control.training.batch_size * control.training.accumulate_grad_batches == 16
+    assert Path(control.training.output_dir).parts[-3:] == (
+        "logit_distillation",
+        "fast_scnn_batch8_control",
+        "seed42",
+    )
+
+
 def test_checked_in_bpkd_configs_are_clean_and_match_the_declared_matrix():
     configs = [
         load_config(path)

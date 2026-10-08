@@ -356,6 +356,11 @@ class DistillationModule(BaselineModule):
         )
         self.teacher = teacher
         self.distillation_loss = distillation_loss
+        self.teacher_metrics = SegmentationMetrics(
+            class_names,
+            ignore_index,
+            trimap_kernel_size=trimap_kernel_size,
+        )
         self.teacher.requires_grad_(False)
         self.teacher.eval()
         self.save_hyperparameters(
@@ -377,7 +382,23 @@ class DistillationModule(BaselineModule):
 
     def on_train_epoch_start(self) -> None:
         super().on_train_epoch_start()
+        self.teacher_metrics.reset("train")
         self.teacher.eval()
+
+    def on_train_epoch_end(self) -> None:
+        super().on_train_epoch_end()
+        teacher_metrics, _ = self.teacher_metrics.snapshot("train")
+        diagnostic_names = ["miou", "iou_small_rock"]
+        if self.teacher_metrics.trimap_kernel_size is not None:
+            diagnostic_names.append("trimap_iou_small_rock")
+        for name in diagnostic_names:
+            self.log(
+                f"train/teacher_{name}",
+                teacher_metrics[name],
+                on_step=False,
+                on_epoch=True,
+                sync_dist=False,
+            )
 
     def _log_training_component(
         self,
@@ -404,9 +425,6 @@ class DistillationModule(BaselineModule):
         images = batch["pixel_values"]
         labels = batch["labels"]
         task_loss, scores = self._loss_and_scores(images, labels)
-        # Lightning switches all child modules with the parent.  Reassert this
-        # immediately before every teacher forward so the teacher cannot ever
-        # update BatchNorm/dropout state during a student step.
         self.teacher.eval()
         with torch.no_grad():
             teacher_scores = self.teacher(images)
@@ -422,6 +440,19 @@ class DistillationModule(BaselineModule):
 
         loss = task_loss + result.total
         self.metrics.update("train", scores.detach().argmax(dim=1), labels)
+        teacher_predictions = teacher_scores.argmax(dim=1)
+        self.teacher_metrics.update("train", teacher_predictions, labels)
+        valid = labels != self.metrics.ignore_index
+        valid_count = valid.sum()
+        agreement = torch.where(
+            valid_count > 0,
+            (scores.detach().argmax(dim=1).eq(teacher_predictions) & valid)
+            .sum()
+            .to(dtype=scores.dtype)
+            / valid_count.clamp_min(1).to(dtype=scores.dtype),
+            scores.sum() * 0,
+        )
+        kd_to_task_ratio = result.total.detach() / task_loss.detach().clamp_min(1e-8)
         self._log_loss("train", loss, batch_size=images.shape[0], on_step=True)
         self._log_training_component(
             "task_loss",
@@ -431,6 +462,16 @@ class DistillationModule(BaselineModule):
         self._log_training_component(
             "distillation_loss",
             result.total,
+            batch_size=images.shape[0],
+        )
+        self._log_training_component(
+            "teacher_student_agreement",
+            agreement,
+            batch_size=images.shape[0],
+        )
+        self._log_training_component(
+            "kd_to_task_ratio",
+            kd_to_task_ratio,
             batch_size=images.shape[0],
         )
         for name, value in result.components.items():

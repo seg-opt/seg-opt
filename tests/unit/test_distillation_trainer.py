@@ -46,20 +46,31 @@ def test_canonical_distillation_trains_only_student_and_saves_student_weights():
         distillation_loss=PixelWiseKDLoss(num_classes=4, spatial_stride=1),
         head_learning_rate=1e-3,
         class_names=["background", "sky", "small_rock", "large_rock"],
+        trimap_kernel_size=7,
         total_steps=4,
     )
-    module.log = lambda *args, **kwargs: None
+    logged: dict[str, torch.Tensor] = {}
+    module.log = lambda name, value, **kwargs: logged.setdefault(name, value)
     module.train()
     teacher.train()
+    module.on_train_epoch_start()
 
     loss = module.training_step(make_batch(), batch_idx=0)
     loss.backward()
+    module.on_train_epoch_end()
 
     assert student.projection.weight.grad is not None
     assert teacher.projection.weight.grad is None
     assert not teacher.training
     assert teacher.forward_calls == 1
     assert not any(key.startswith("teacher.") for key in module.state_dict())
+    assert {
+        "train/teacher_miou",
+        "train/teacher_iou_small_rock",
+        "train/teacher_trimap_iou_small_rock",
+    } <= set(logged)
+    assert torch.isfinite(logged["train/teacher_student_agreement"])
+    assert torch.isfinite(logged["train/kd_to_task_ratio"])
 
     baseline = BaselineModule(
         TinySegmentationModel(4),
