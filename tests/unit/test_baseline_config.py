@@ -126,6 +126,71 @@ def test_segformer_b4_to_fast_scnn_logit_distillation_config():
     )
 
 
+def test_segformer_b4_to_b0_logit_distillation_config():
+    config = load_config(
+        "experiments/logit_distillation/segformer_b0_from_segformer_b4.yaml"
+    )
+
+    assert config.model.name == "segformer_b0"
+    assert config.model.model_id == "nvidia/mit-b0"
+    assert config.model.pretrained
+    assert config.data.mask_variant == "clean"
+    assert config.training.batch_size == 8
+    assert config.training.accumulate_grad_batches == 2
+    assert config.training.batch_size * config.training.accumulate_grad_batches == 16
+    assert Path(config.training.output_dir).parts[-3:] == (
+        "logit_distillation",
+        "segformer_b0_from_segformer_b4",
+        "seed42",
+    )
+    assert config.distillation is not None
+    assert config.distillation.method == "vanilla"
+    assert config.distillation.spatial_stride == 8
+    assert config.distillation.vanilla_weight == 1.0
+    assert config.distillation.vanilla_temperature == 1.0
+    assert Path(config.distillation.teacher.config_path).parts[-2:] == (
+        "baselines_benchmark",
+        "segformer_b4.yaml",
+    )
+    assert Path(config.distillation.teacher.checkpoint_path).parts[-6:] == (
+        "results",
+        "baselines_benchmark",
+        "segformer_b4",
+        "seed42",
+        "checkpoints",
+        "best.ckpt",
+    )
+
+
+@pytest.mark.parametrize(
+    ("config_name", "weight", "temperature"),
+    [
+        ("segformer_b0_from_segformer_b4_s4_w1_t1", 1.0, 1.0),
+        ("segformer_b0_from_segformer_b4_s4_w1_t2", 1.0, 2.0),
+        ("segformer_b0_from_segformer_b4_s4_w4_t1", 4.0, 1.0),
+        ("segformer_b0_from_segformer_b4_s4_w4_t2", 4.0, 2.0),
+    ],
+)
+def test_segformer_b4_to_b0_stride4_vanilla_kd_sweep(
+    config_name, weight, temperature
+):
+    config = load_config(f"experiments/logit_distillation/{config_name}.yaml")
+
+    assert config.model.name == "segformer_b0"
+    assert config.training.batch_size * config.training.accumulate_grad_batches == 16
+    assert Path(config.training.output_dir).parts[-3:] == (
+        "logit_distillation",
+        config_name,
+        "seed42",
+    )
+    assert config.distillation is not None
+    assert config.distillation.method == "vanilla"
+    assert config.distillation.spatial_stride == 4
+    assert config.distillation.vanilla_weight == weight
+    assert config.distillation.vanilla_temperature == temperature
+    assert Path(config.distillation.teacher.config_path).name == "segformer_b4.yaml"
+
+
 def test_checked_in_bpkd_configs_are_clean_and_match_the_declared_matrix():
     configs = [
         load_config(path)
