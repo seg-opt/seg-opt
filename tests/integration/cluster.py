@@ -4,8 +4,6 @@ Kept local to the integration suite so the tests are self-contained and don't
 depend on anything at the repo root. Parses the same ./.env that connect.sh
 uses and materialises the private key into a temp file for OpenSSH.
 """
-from __future__ import annotations
-
 import os
 import stat
 import tempfile

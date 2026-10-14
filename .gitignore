@@ -231,3 +231,10 @@ __marimo__/
 .ssh/*
 id_ed25519
 id_ed25519.pub
+
+# Slurm
+*.err
+*.out
+
+# Other
+*.pdf

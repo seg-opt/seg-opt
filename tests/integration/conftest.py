@@ -8,8 +8,6 @@ SERVICE_ID (a folder in the cluster home, e.g. ~/pl1234-01).
 If the env file is missing or incomplete, the tests skip rather than fail, so
 the suite is safe to run in CI without secrets.
 """
-from __future__ import annotations
-
 import base64
 import os
 import subprocess
