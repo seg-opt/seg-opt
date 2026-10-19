@@ -12,11 +12,12 @@ from src.data.dataset import (
     load_datasets,
     load_split_manifest,
 )
-from src.distillation.bpkd import BPKDLoss, PixelWiseKDLoss
 from src.data.processors import SegmentationImageProcessor
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
+from src.distillation.bpkd import BPKDLoss, PixelWiseKDLoss
+from src.distillation.cap import CAPLoss
 from src.models.loaders import load_model
-from src.models.segmentation import SemanticSegmenter
+from src.models.segmentation import SegFormerSegmenter, SemanticSegmenter
 from src.train.losses import SegmentationLoss
 from src.train.trainer import BaselineModule, DistillationModule
 from src.utils.utils import BaselineConfig, DistillationConfig, load_config
@@ -108,6 +109,7 @@ def build_baseline(
     }
     if config.distillation is not None and include_distillation:
         teacher = load_distillation_teacher(config)
+        cap_loss = build_cap_loss(config, model=model, teacher=teacher)
         module: BaselineModule = DistillationModule(
             model,
             criterion,
@@ -117,6 +119,7 @@ def build_baseline(
                 num_classes=config.num_classes,
                 ignore_index=config.loss.ignore_index,
             ),
+            cap_loss=cap_loss,
             **module_args,
         )
     else:
@@ -160,6 +163,37 @@ def build_distillation_loss(
         prm=config.prm,
         pom=config.pom,
         ignore_index=ignore_index,
+    )
+
+
+def build_cap_loss(
+    config: BaselineConfig,
+    *,
+    model: SemanticSegmenter,
+    teacher: SemanticSegmenter,
+) -> CAPLoss | None:
+    distillation = config.distillation
+    if distillation is None or distillation.cap_weight == 0:
+        return None
+    if not isinstance(model, SegFormerSegmenter) or not isinstance(
+        teacher,
+        SegFormerSegmenter,
+    ):
+        raise ValueError("CAP currently requires SegFormer student and teacher models")
+    if model.feature_stride != teacher.feature_stride:
+        raise ValueError("CAP student and teacher feature strides must match")
+
+    feature_size = (
+        config.data.image_height // model.feature_stride,
+        config.data.image_width // model.feature_stride,
+    )
+    return CAPLoss(
+        student_dims=model.feature_channels,
+        teacher_dims=teacher.feature_channels,
+        hw_dims=feature_size,
+        weight=distillation.cap_weight,
+        num_heads=distillation.cap_num_heads,
+        softmax_scale=distillation.cap_softmax_scale,
     )
 
 

@@ -3,6 +3,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from src.distillation.bpkd import PixelWiseKDLoss
+from src.distillation.cap import CAPLoss
 from src.train.losses import SegmentationLoss
 from src.train.trainer import (
     BaselineModule,
@@ -27,6 +28,30 @@ class TinySegmentationModel(nn.Module):
 
     def encoder_parameters(self):
         return iter(())
+
+
+class TinyFeatureSegmentationModel(nn.Module):
+    def __init__(self, num_classes, feature_channels):
+        super().__init__()
+        self.features = nn.Conv2d(3, feature_channels, kernel_size=1)
+        self.classifier = nn.Conv2d(feature_channels, num_classes, kernel_size=1)
+        self.forward_calls = 0
+
+    def scores_and_features(self, inputs):
+        self.forward_calls += 1
+        features = self.features(inputs)
+        return self.classifier(features), features
+
+    def forward(self, inputs):
+        scores, _ = self.scores_and_features(inputs)
+        return scores
+
+    def loss_and_scores(self, inputs, labels, criterion):
+        scores = self(inputs)
+        return criterion(scores, labels), scores
+
+    def encoder_parameters(self):
+        return self.features.parameters()
 
 
 def make_batch():
@@ -88,6 +113,60 @@ def test_canonical_distillation_validation_does_not_call_teacher():
 
     assert loss.ndim == 0
     assert teacher.forward_calls == 0
+
+
+def test_cap_distillation_uses_one_forward_and_trains_projector():
+    teacher = TinyFeatureSegmentationModel(4, feature_channels=8)
+    student = TinyFeatureSegmentationModel(4, feature_channels=4)
+    cap_loss = CAPLoss(4, 8, (8, 8), num_heads=2, weight=0.08)
+    module = DistillationModule(
+        student,
+        SegmentationLoss(4),
+        teacher=teacher,
+        distillation_loss=PixelWiseKDLoss(num_classes=4, spatial_stride=1),
+        cap_loss=cap_loss,
+        head_learning_rate=1e-3,
+        backbone_learning_rate=1e-4,
+        class_names=["background", "sky", "small_rock", "large_rock"],
+        total_steps=4,
+    )
+    module.log = lambda *args, **kwargs: None
+
+    loss = module.training_step(make_batch(), batch_idx=0)
+    loss.backward()
+
+    assert student.forward_calls == 1
+    assert teacher.forward_calls == 1
+    assert student.features.weight.grad is not None
+    assert student.classifier.weight.grad is not None
+    assert teacher.features.weight.grad is None
+    assert all(
+        parameter.grad is not None
+        for parameter in cap_loss.parameters()
+        if parameter.requires_grad
+    )
+
+    optimizer = module.configure_optimizers()["optimizer"]
+    optimized = {
+        id(parameter)
+        for group in optimizer.param_groups
+        for parameter in group["params"]
+    }
+    assert {id(parameter) for parameter in cap_loss.parameters()} <= optimized
+    assert not any(
+        key.startswith(("teacher.", "cap_loss."))
+        for key in module.state_dict()
+    )
+
+    baseline = BaselineModule(
+        TinyFeatureSegmentationModel(4, feature_channels=4),
+        SegmentationLoss(4),
+        head_learning_rate=1e-3,
+        backbone_learning_rate=1e-4,
+        class_names=["background", "sky", "small_rock", "large_rock"],
+        total_steps=4,
+    )
+    baseline.load_state_dict(module.state_dict(), strict=True)
 
 
 def test_distillation_lightning_checkpoint_is_evaluable_without_teacher(tmp_path):

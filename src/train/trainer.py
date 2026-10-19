@@ -49,6 +49,7 @@ def parameter_groups(
     *,
     head_learning_rate: float,
     backbone_learning_rate: float | None,
+    additional_head_parameters: Iterable[nn.Parameter] = (),
 ) -> list[dict[str, Any]]:
     """Split trainable model parameters into disjoint head/backbone groups."""
 
@@ -64,6 +65,11 @@ def parameter_groups(
 
     encoder_ids = {id(parameter) for parameter in encoder}
     head = [parameter for parameter in trainable if id(parameter) not in encoder_ids]
+    additional_head = _unique_trainable(additional_head_parameters)
+    model_parameter_ids = {id(parameter) for parameter in trainable}
+    if any(id(parameter) in model_parameter_ids for parameter in additional_head):
+        raise ValueError("additional head parameters overlap model parameters")
+    head.extend(additional_head)
     groups: list[dict[str, Any]] = []
     if head:
         groups.append(
@@ -129,7 +135,7 @@ class BaselineModule(L.LightningModule):
         # arguments.  Ignore their conventional names here too because this
         # call inspects the active subclass frame under Lightning.
         self.save_hyperparameters(
-            ignore=["model", "criterion", "teacher", "distillation_loss"]
+            ignore=["model", "criterion", "teacher", "distillation_loss", "cap_loss"]
         )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
@@ -294,11 +300,16 @@ class BaselineModule(L.LightningModule):
             raise RuntimeError("trainer estimated no optimizer steps")
         return total_steps
 
+    def additional_head_parameters(self) -> Iterable[nn.Parameter]:
+        """Return trainable auxiliary parameters that use the head learning rate."""
+        return iter(())
+
     def configure_optimizers(self) -> dict[str, Any]:
         groups = parameter_groups(
             self.model,
             head_learning_rate=self.head_learning_rate,
             backbone_learning_rate=self.backbone_learning_rate,
+            additional_head_parameters=self.additional_head_parameters(),
         )
         optimizer = torch.optim.AdamW(groups, weight_decay=self.weight_decay)
 
@@ -333,6 +344,7 @@ class DistillationModule(BaselineModule):
         *,
         teacher: nn.Module,
         distillation_loss: nn.Module,
+        cap_loss: nn.Module | None = None,
         head_learning_rate: float,
         backbone_learning_rate: float | None = None,
         weight_decay: float = 0.0,
@@ -356,10 +368,11 @@ class DistillationModule(BaselineModule):
         )
         self.teacher = teacher
         self.distillation_loss = distillation_loss
+        self.cap_loss = cap_loss
         self.teacher.requires_grad_(False)
         self.teacher.eval()
         self.save_hyperparameters(
-            ignore=["model", "criterion", "teacher", "distillation_loss"]
+            ignore=["model", "criterion", "teacher", "distillation_loss", "cap_loss"]
         )
 
     @staticmethod
@@ -378,6 +391,42 @@ class DistillationModule(BaselineModule):
     def on_train_epoch_start(self) -> None:
         super().on_train_epoch_start()
         self.teacher.eval()
+
+    def additional_head_parameters(self) -> Iterable[nn.Parameter]:
+        if self.cap_loss is None:
+            return iter(())
+        return self.cap_loss.parameters()
+
+    @staticmethod
+    def _scores_and_features(
+        model: nn.Module,
+        images: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        extractor = getattr(model, "scores_and_features", None)
+        if not callable(extractor):
+            raise TypeError("CAP requires models that implement scores_and_features")
+        result = extractor(images)
+        if not isinstance(result, tuple) or len(result) != 2:
+            raise TypeError("scores_and_features must return (scores, features)")
+        scores, features = result
+        if not isinstance(scores, torch.Tensor) or not isinstance(
+            features,
+            torch.Tensor,
+        ):
+            raise TypeError("scores_and_features must return tensors")
+        return scores, features
+
+    @staticmethod
+    def _validate_distillation_result(
+        result: Any,
+        *,
+        name: str,
+    ) -> DistillationLossResult:
+        if not isinstance(result, DistillationLossResult):
+            raise TypeError(f"{name} must return DistillationLossResult")
+        if result.total.ndim != 0:
+            raise TypeError(f"{name} must return a scalar tensor")
+        return result
 
     def _log_training_component(
         self,
@@ -403,24 +452,52 @@ class DistillationModule(BaselineModule):
         del batch_idx
         images = batch["pixel_values"]
         labels = batch["labels"]
-        task_loss, scores = self._loss_and_scores(images, labels)
+        student_features = None
+        if self.cap_loss is None:
+            task_loss, scores = self._loss_and_scores(images, labels)
+        else:
+            scores, student_features = self._scores_and_features(self.model, images)
+            self._validate_scores(scores, labels)
+            task_loss = self.criterion(scores, labels)
+            if not isinstance(task_loss, torch.Tensor) or task_loss.ndim != 0:
+                raise TypeError("criterion must return a scalar tensor loss")
         # Lightning switches all child modules with the parent.  Reassert this
         # immediately before every teacher forward so the teacher cannot ever
         # update BatchNorm/dropout state during a student step.
         self.teacher.eval()
         with torch.no_grad():
-            teacher_scores = self.teacher(images)
-        result = self.distillation_loss(
-            self._distillation_logits(self.model, scores),
-            self._distillation_logits(self.teacher, teacher_scores),
-            labels,
+            if self.cap_loss is None:
+                teacher_scores = self.teacher(images)
+                teacher_features = None
+            else:
+                teacher_scores, teacher_features = self._scores_and_features(
+                    self.teacher,
+                    images,
+                )
+        logit_result = self._validate_distillation_result(
+            self.distillation_loss(
+                self._distillation_logits(self.model, scores),
+                self._distillation_logits(self.teacher, teacher_scores),
+                labels,
+            ),
+            name="distillation_loss",
         )
-        if not isinstance(result, DistillationLossResult):
-            raise TypeError("distillation_loss must return DistillationLossResult")
-        if result.total.ndim != 0:
-            raise TypeError("distillation loss must return a scalar tensor")
+        results = [logit_result]
+        if self.cap_loss is not None:
+            if student_features is None or teacher_features is None:
+                raise RuntimeError("CAP feature extraction did not return features")
+            results.append(
+                self._validate_distillation_result(
+                    self.cap_loss(student_features, teacher_features),
+                    name="cap_loss",
+                )
+            )
 
-        loss = task_loss + result.total
+        distillation_total = sum(
+            (result.total for result in results),
+            start=task_loss.new_zeros(()),
+        )
+        loss = task_loss + distillation_total
         self.metrics.update("train", scores.detach().argmax(dim=1), labels)
         self._log_loss("train", loss, batch_size=images.shape[0], on_step=True)
         self._log_training_component(
@@ -430,21 +507,23 @@ class DistillationModule(BaselineModule):
         )
         self._log_training_component(
             "distillation_loss",
-            result.total,
+            distillation_total,
             batch_size=images.shape[0],
         )
-        for name, value in result.components.items():
-            self._log_training_component(
-                f"distillation_{name}",
-                value,
-                batch_size=images.shape[0],
-            )
+        for result in results:
+            for name, value in result.components.items():
+                self._log_training_component(
+                    f"distillation_{name}",
+                    value,
+                    batch_size=images.shape[0],
+                )
         return loss
 
     def state_dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Exclude frozen teacher weights from student deployment checkpoints."""
+        """Exclude training-only teacher and CAP weights from deployment checkpoints."""
         state = super().state_dict(*args, **kwargs)
-        for key in [key for key in state if key.startswith("teacher.")]:
+        excluded_prefixes = ("teacher.", "cap_loss.")
+        for key in [key for key in state if key.startswith(excluded_prefixes)]:
             state.pop(key)
         return state
 
@@ -459,8 +538,11 @@ class DistillationModule(BaselineModule):
             strict=False,
             assign=assign,
         )
+        allowed_missing_prefixes = ("teacher.", "cap_loss.")
         missing = [
-            key for key in incompatible.missing_keys if not key.startswith("teacher.")
+            key
+            for key in incompatible.missing_keys
+            if not key.startswith(allowed_missing_prefixes)
         ]
         unexpected = list(incompatible.unexpected_keys)
         if strict and (missing or unexpected):

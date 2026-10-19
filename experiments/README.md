@@ -1,12 +1,18 @@
 # Experiment map
 
-## Active: clean baseline benchmark
+## Clean baseline benchmark
 
-[`baselines_benchmark/`](baselines_benchmark/) is the single active
-experiment. It compares the Fast-SCNN student with four independent teacher
-candidates on clean masks and the aligned seed-42 split. Run its smoke check,
-then its five-job array, and use its summary to choose a teacher before doing
-any distillation.
+[`baselines_benchmark/`](baselines_benchmark/) compares the Fast-SCNN student
+with four independent teacher candidates on clean masks and the aligned
+seed-42 split. Run its smoke check, then its five-job array, and use its summary
+to choose a teacher before doing any distillation.
+
+## CAP ablation
+
+[`cap/`](cap/) compares the SegFormer-B4 to SegFormer-B0 vanilla logit-KD
+control with the same run plus the ScaleKD cross-attention feature loss. Its
+submitter runs both smoke paths first and releases both full jobs only after
+that check succeeds. The trained clean SegFormer-B4 checkpoint is required.
 
 ## Deferred: BPKD
 

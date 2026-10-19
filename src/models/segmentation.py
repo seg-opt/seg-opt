@@ -1,3 +1,4 @@
+import math
 from collections.abc import Iterable, Sequence
 from contextlib import nullcontext
 from typing import Any
@@ -213,15 +214,40 @@ class SegFormerSegmenter(SemanticSegmenter):
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
         return self.model.segformer.parameters()
 
-    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+    @property
+    def feature_channels(self) -> int:
+        """Channel count of the final encoder stage used for CAP."""
+        return self.model.config.hidden_sizes[-1]
+
+    @property
+    def feature_stride(self) -> int:
+        """Cumulative spatial stride of the final encoder stage."""
+        return math.prod(self.model.config.strides)
+
+    def scores_and_features(
+        self,
+        pixel_values: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return full-resolution scores and the final encoder feature map."""
         output_size = pixel_values.shape[-2:]
-        outputs = self.model(pixel_values=pixel_values)
-        return F.interpolate(
+        outputs = self.model(
+            pixel_values=pixel_values,
+            output_hidden_states=True,
+        )
+        features = outputs.hidden_states[-1]
+        if features.ndim != 4:
+            raise ValueError("SegFormer final features must have shape [B, C, H, W]")
+        scores = F.interpolate(
             outputs.logits,
             size=output_size,
             mode="bilinear",
             align_corners=False,
         )
+        return scores, features
+
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        scores, _ = self.scores_and_features(pixel_values)
+        return scores
 
 
 class Mask2FormerSegmenter(SemanticSegmenter):

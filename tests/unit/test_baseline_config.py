@@ -1,11 +1,14 @@
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
 from torch import nn
 
-from src.baselines import load_distillation_teacher
+from src.baselines import build_cap_loss, load_distillation_teacher
+from src.distillation.cap import CAPLoss
+from src.models.segmentation import SegFormerSegmenter
 from src.utils.artifacts import parameter_counts, sha256_file, to_builtin, write_json
 from src.utils.utils import (
     BASELINE_NAMES,
@@ -160,6 +163,67 @@ def test_segformer_b4_to_b0_logit_distillation_config():
         "checkpoints",
         "best.ckpt",
     )
+
+
+@pytest.mark.parametrize(
+    ("variant", "cap_weight"),
+    [
+        ("no_cap", 0.0),
+        ("cap", 0.08),
+    ],
+)
+def test_segformer_b4_to_b0_cap_ablation_configs(variant, cap_weight):
+    config = load_config(
+        f"experiments/cap/segformer_b0_from_segformer_b4_{variant}.yaml"
+    )
+
+    assert config.model.name == "segformer_b0"
+    assert config.data.image_height == 512
+    assert config.data.image_width == 768
+    assert config.training.batch_size * config.training.accumulate_grad_batches == 16
+    assert Path(config.training.output_dir).parts[-3:] == (
+        "cap",
+        f"segformer_b0_from_segformer_b4_{variant}",
+        "seed42",
+    )
+    assert config.distillation is not None
+    assert config.distillation.method == "vanilla"
+    assert config.distillation.vanilla_weight == 1.0
+    assert config.distillation.cap_weight == cap_weight
+    assert config.distillation.cap_num_heads == 8
+    assert config.distillation.cap_softmax_scale == 5.0
+
+
+def test_cap_config_builds_the_b0_to_b4_feature_projector():
+    class TinySegFormerCore(nn.Module):
+        def __init__(self, channels):
+            super().__init__()
+            self.config = SimpleNamespace(hidden_sizes=[channels], strides=[32])
+            self.segformer = nn.Identity()
+
+    cap_config = load_config(
+        "experiments/cap/segformer_b0_from_segformer_b4_cap.yaml"
+    )
+    no_cap_config = load_config(
+        "experiments/cap/segformer_b0_from_segformer_b4_no_cap.yaml"
+    )
+    student = SegFormerSegmenter(
+        TinySegFormerCore(256),
+        cap_config.data.class_names,
+    )
+    teacher = SegFormerSegmenter(
+        TinySegFormerCore(512),
+        cap_config.data.class_names,
+    )
+
+    cap_loss = build_cap_loss(cap_config, model=student, teacher=teacher)
+
+    assert isinstance(cap_loss, CAPLoss)
+    assert cap_loss.weight == 0.08
+    assert cap_loss.projector.student_dims == 256
+    assert cap_loss.projector.teacher_dims == 512
+    assert cap_loss.projector.hw_dims == (16, 24)
+    assert build_cap_loss(no_cap_config, model=student, teacher=teacher) is None
 
 
 @pytest.mark.parametrize(

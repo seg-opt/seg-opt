@@ -186,13 +186,21 @@ class DistillationConfig:
     edge_temperature: float = 1.0
     prm: bool = True
     pom: bool = True
+    cap_weight: float = 0.0
+    cap_num_heads: int = 8
+    cap_softmax_scale: float = 5.0
 
     def __post_init__(self) -> None:
         if self.method not in {"vanilla", "bpkd"}:
             raise ValueError("distillation method must be 'vanilla' or 'bpkd'")
         if self.spatial_stride <= 0:
             raise ValueError("distillation spatial_stride must be positive")
-        if self.vanilla_weight < 0 or self.body_weight < 0 or self.edge_weight < 0:
+        if (
+            self.vanilla_weight < 0
+            or self.body_weight < 0
+            or self.edge_weight < 0
+            or self.cap_weight < 0
+        ):
             raise ValueError("distillation weights must be non-negative")
         if min(
             self.vanilla_temperature,
@@ -283,6 +291,9 @@ def _load_distillation_config(value: Any) -> DistillationConfig | None:
             "edge_temperature",
             "prm",
             "pom",
+            "cap_weight",
+            "cap_num_heads",
+            "cap_softmax_scale",
         },
         "distillation",
     )
