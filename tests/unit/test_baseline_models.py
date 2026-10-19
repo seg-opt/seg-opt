@@ -35,11 +35,18 @@ class TinyDenseSegmenter(SemanticSegmenter):
 class TinySegFormer(nn.Module):
     def __init__(self):
         super().__init__()
+        self.config = SimpleNamespace(hidden_sizes=[8], strides=[2])
         self.segformer = nn.Conv2d(3, 8, kernel_size=3, stride=2, padding=1)
         self.decode_head = nn.Conv2d(8, 4, kernel_size=1)
+        self.forward_calls = 0
 
-    def forward(self, pixel_values):
-        return SimpleNamespace(logits=self.decode_head(self.segformer(pixel_values)))
+    def forward(self, pixel_values, output_hidden_states=False):
+        self.forward_calls += 1
+        features = self.segformer(pixel_values)
+        return SimpleNamespace(
+            logits=self.decode_head(features),
+            hidden_states=(features,) if output_hidden_states else None,
+        )
 
 
 class TinyMask2Former(nn.Module):
@@ -125,13 +132,29 @@ def test_resnet34_unet_has_real_skips_and_full_resolution_output():
 
 
 def test_segformer_wrapper_interpolates_official_decoder_scores():
-    model = SegFormerSegmenter(TinySegFormer(), CLASS_NAMES)
+    core = TinySegFormer()
+    model = SegFormerSegmenter(core, CLASS_NAMES)
     images = torch.randn(2, 3, 31, 47)
 
     scores = model(images)
 
     assert scores.shape == (2, 4, 31, 47)
     assert set(model.encoder_parameters()) == set(model.model.segformer.parameters())
+    assert core.forward_calls == 1
+
+
+def test_segformer_wrapper_returns_final_features_with_scores_in_one_forward():
+    core = TinySegFormer()
+    model = SegFormerSegmenter(core, CLASS_NAMES)
+    images = torch.randn(2, 3, 31, 47)
+
+    scores, features = model.scores_and_features(images)
+
+    assert scores.shape == (2, 4, 31, 47)
+    assert features.shape == (2, 8, 16, 24)
+    assert model.feature_channels == 8
+    assert model.feature_stride == 2
+    assert core.forward_calls == 1
 
 
 def test_mask2former_converts_dense_targets_and_uses_native_loss_once():

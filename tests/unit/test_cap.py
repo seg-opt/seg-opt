@@ -3,8 +3,9 @@ import math
 import pytest
 import torch
 from torch import nn
+from torch.nn import functional as F
 
-from src.distillation.cap import AttentionProjector, CrossAttention
+from src.distillation.cap import AttentionProjector, CAPLoss, CrossAttention
 
 
 def test_attention_projector_supports_the_segformer_b0_b4_contract():
@@ -144,3 +145,63 @@ def test_projector_is_composed_only_of_torch_modules():
     projector = AttentionProjector(4, 8, (2, 3), num_heads=2)
 
     assert all(isinstance(module, nn.Module) for module in projector.modules())
+
+
+def test_cap_loss_matches_scaledkd_normalization_and_reduction():
+    loss = CAPLoss(2, 2, (1, 2), weight=2.5, num_heads=1)
+    loss.projector = nn.Identity()
+    student = torch.tensor(
+        [
+            [[[1.0, 2.0]], [[2.0, 0.0]]],
+            [[[0.0, 3.0]], [[4.0, 4.0]]],
+        ],
+        requires_grad=True,
+    )
+    teacher = torch.tensor(
+        [
+            [[[2.0, 0.0]], [[0.0, 1.0]]],
+            [[[3.0, 1.0]], [[4.0, 2.0]]],
+        ],
+        requires_grad=True,
+    )
+
+    result = loss(student, teacher)
+    expected = F.mse_loss(
+        F.normalize(student, dim=1),
+        F.normalize(teacher, dim=1),
+        reduction="sum",
+    ) / student.shape[0]
+
+    torch.testing.assert_close(result.components["raw_cap"], expected)
+    torch.testing.assert_close(result.components["weighted_cap"], expected * 2.5)
+    torch.testing.assert_close(result.total, expected * 2.5)
+
+    result.total.backward()
+    assert student.grad is not None
+    assert teacher.grad is None
+
+
+def test_cap_loss_backpropagates_through_projector_but_not_teacher():
+    loss = CAPLoss(4, 8, (2, 3), num_heads=2)
+    student = torch.randn(2, 4, 2, 3, requires_grad=True)
+    teacher = torch.randn(2, 8, 2, 3, requires_grad=True)
+
+    result = loss(student, teacher)
+    result.total.backward()
+
+    assert result.total.ndim == 0
+    assert result.total.dtype == torch.float32
+    assert student.grad is not None
+    assert teacher.grad is None
+    assert all(
+        parameter.grad is not None
+        for parameter in loss.projector.parameters()
+        if parameter.requires_grad
+    )
+
+
+def test_cap_loss_rejects_mismatched_teacher_features():
+    loss = CAPLoss(4, 8, (2, 3), num_heads=2)
+
+    with pytest.raises(ValueError, match="teacher feature shape"):
+        loss(torch.randn(2, 4, 2, 3), torch.randn(2, 7, 2, 3))

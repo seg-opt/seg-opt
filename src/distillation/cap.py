@@ -4,6 +4,9 @@ import math
 
 import torch
 from torch import nn
+from torch.nn import functional as F
+
+from src.distillation.bpkd import DistillationLossResult
 
 
 class CrossAttention(nn.Module):
@@ -195,3 +198,51 @@ class AttentionProjector(nn.Module):
             height,
             width,
         ).contiguous()
+
+
+class CAPLoss(nn.Module):
+    """ScaleKD feature matching through a cross-attention projector."""
+
+    def __init__(
+        self,
+        student_dims: int,
+        teacher_dims: int,
+        hw_dims: tuple[int, int],
+        *,
+        weight: float = 1.0,
+        num_heads: int = 8,
+        softmax_scale: float = 5.0,
+    ) -> None:
+        super().__init__()
+        self.weight = float(weight)
+        self.projector = AttentionProjector(
+            student_dims=student_dims,
+            teacher_dims=teacher_dims,
+            hw_dims=hw_dims,
+            num_heads=num_heads,
+            softmax_scale=softmax_scale,
+        )
+
+    def forward(
+        self,
+        student_features: torch.Tensor,
+        teacher_features: torch.Tensor,
+    ) -> DistillationLossResult:
+        projected = self.projector(student_features)
+        if teacher_features.shape != projected.shape:
+            raise ValueError(
+                "teacher feature shape must match projected student feature shape: "
+                f"expected {tuple(projected.shape)}, got {tuple(teacher_features.shape)}"
+            )
+
+        projected = F.normalize(projected.float(), dim=1)
+        teacher = F.normalize(teacher_features.detach().float(), dim=1)
+        raw_cap = F.mse_loss(projected, teacher, reduction="sum") / projected.shape[0]
+        weighted_cap = raw_cap * self.weight
+        return DistillationLossResult(
+            total=weighted_cap,
+            components={
+                "raw_cap": raw_cap,
+                "weighted_cap": weighted_cap,
+            },
+        )
