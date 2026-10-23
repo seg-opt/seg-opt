@@ -171,9 +171,9 @@ class TeacherConfig:
 
 @dataclass(frozen=True)
 class DistillationConfig:
-    """Validated settings shared by vanilla KD and BPKD experiments."""
+    """Validated settings shared by vanilla KD, BPKD and SARD experiments."""
 
-    method: Literal["vanilla", "bpkd"]
+    method: Literal["vanilla", "bpkd", "sard"]
     teacher: TeacherConfig
     spatial_stride: int = 8
     vanilla_weight: float = 1.0
@@ -186,10 +186,19 @@ class DistillationConfig:
     edge_temperature: float = 1.0
     prm: bool = True
     pom: bool = True
+    sard_feature_weight: float = 1.0
+    sard_distribution_weight: float = 0.5
+    sard_edge_weight: float = 2.0
+    sard_corner_weight: float = 1.0
+    sard_density_weight: float = 1.0
+    sard_density_radius: int = 7
+    sard_noise_alpha: float = 0.5
+    sard_projection_channels: int = 256
+    sard_denoiser_hidden_channels: int = 128
 
     def __post_init__(self) -> None:
-        if self.method not in {"vanilla", "bpkd"}:
-            raise ValueError("distillation method must be 'vanilla' or 'bpkd'")
+        if self.method not in {"vanilla", "bpkd", "sard"}:
+            raise ValueError("distillation method must be 'vanilla', 'bpkd' or 'sard'")
         if self.spatial_stride <= 0:
             raise ValueError("distillation spatial_stride must be positive")
         if self.vanilla_weight < 0 or self.body_weight < 0 or self.edge_weight < 0:
@@ -219,6 +228,26 @@ class DistillationConfig:
         if self.method == "bpkd":
             if self.body_weight == 0 and self.edge_weight == 0:
                 raise ValueError("BPKD requires a non-zero body_weight or edge_weight")
+        if min(
+            self.sard_feature_weight,
+            self.sard_distribution_weight,
+            self.sard_edge_weight,
+            self.sard_corner_weight,
+            self.sard_density_weight,
+        ) < 0:
+            raise ValueError("SARD weights must be non-negative")
+        if self.sard_density_radius < 0:
+            raise ValueError("sard_density_radius must be non-negative")
+        if not 0 < self.sard_noise_alpha < 1:
+            raise ValueError("sard_noise_alpha must be in (0, 1)")
+        if self.sard_projection_channels <= 0 or self.sard_denoiser_hidden_channels <= 0:
+            raise ValueError("SARD channel counts must be positive")
+        if self.method == "sard" and not (
+            self.sard_feature_weight or self.sard_distribution_weight
+        ):
+            raise ValueError(
+                "SARD requires a non-zero sard_feature_weight or sard_distribution_weight"
+            )
 
 
 @dataclass(frozen=True)
@@ -283,6 +312,15 @@ def _load_distillation_config(value: Any) -> DistillationConfig | None:
             "edge_temperature",
             "prm",
             "pom",
+            "sard_feature_weight",
+            "sard_distribution_weight",
+            "sard_edge_weight",
+            "sard_corner_weight",
+            "sard_density_weight",
+            "sard_density_radius",
+            "sard_noise_alpha",
+            "sard_projection_channels",
+            "sard_denoiser_hidden_channels",
         },
         "distillation",
     )

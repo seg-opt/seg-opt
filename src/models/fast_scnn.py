@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from src.models.segmentation import SemanticSegmenter
+from src.models.segmentation import FeatureTap, SemanticSegmenter
 
 
 class ConvBNReLU(nn.Sequential):
@@ -251,6 +251,10 @@ class FastSCNN(SemanticSegmenter):
             elif isinstance(module, nn.BatchNorm2d):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
+
+    def distillation_feature_tap(self) -> FeatureTap:
+        """Fused detail/context features at stride 8, before the classifier."""
+        return FeatureTap(self.classifier, 128, use_input=True)
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         output_size = pixel_values.shape[-2:]

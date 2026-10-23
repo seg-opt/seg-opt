@@ -1,10 +1,24 @@
 from collections.abc import Iterable, Sequence
 from contextlib import nullcontext
+from dataclasses import dataclass
 from typing import Any
 
 import torch
 from torch import nn
 from torch.nn import functional as F
+
+
+@dataclass(frozen=True)
+class FeatureTap:
+    """Where a segmenter exposes the dense feature map used by feature KD.
+
+    ``use_input`` selects the module's first positional input instead of its
+    output, which lets a tap sit on the input of a final classifier.
+    """
+
+    module: nn.Module
+    channels: int
+    use_input: bool
 
 
 class SemanticSegmenter(nn.Module):
@@ -42,6 +56,12 @@ class SemanticSegmenter(nn.Module):
         if scores.ndim != 4 or scores.shape[1] != self.num_classes:
             raise ValueError("scores must have shape [B, classes, H, W]")
         return scores
+
+    def distillation_feature_tap(self) -> FeatureTap:
+        """Return the dense pre-classifier features used by feature distillation."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not expose distillation features"
+        )
 
 
 def make_segmentation_head(
@@ -136,6 +156,9 @@ class DINOv3Segmenter(SemanticSegmenter):
         if norm is not None:
             norm.requires_grad_(True)
 
+    def distillation_feature_tap(self) -> FeatureTap:
+        return FeatureTap(self.classifier, self.in_channels, use_input=True)
+
     def train(self, mode: bool = True) -> "DINOv3Segmenter":
         super().train(mode)
         if self.freeze_backbone:
@@ -213,6 +236,14 @@ class SegFormerSegmenter(SemanticSegmenter):
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
         return self.model.segformer.parameters()
 
+    def distillation_feature_tap(self) -> FeatureTap:
+        """Fused all-MLP decoder features at stride 4, before the classifier."""
+        return FeatureTap(
+            self.model.decode_head.classifier,
+            self.model.config.decoder_hidden_size,
+            use_input=True,
+        )
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         output_size = pixel_values.shape[-2:]
         outputs = self.model(pixel_values=pixel_values)
@@ -239,6 +270,14 @@ class Mask2FormerSegmenter(SemanticSegmenter):
 
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
         return self.model.model.pixel_level_module.encoder.parameters()
+
+    def distillation_feature_tap(self) -> FeatureTap:
+        """Pixel-decoder mask features at stride 4 that every query reads."""
+        return FeatureTap(
+            self.model.model.pixel_level_module.decoder.mask_projection,
+            self.model.config.mask_feature_size,
+            use_input=False,
+        )
 
     def dense_targets(
         self,

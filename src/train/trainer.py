@@ -11,9 +11,12 @@ from torch import nn
 from torch.nn.modules.module import _IncompatibleKeys
 
 from src.distillation.bpkd import DistillationLossResult
+from src.distillation.sard import capture_features
 from src.train.metrics import SegmentationMetrics
 from src.train.profiling import GpuStatsCallback, NvtxRangesCallback
 from src.utils.logging import make_wandb_logger
+
+_TRAINING_ONLY_PREFIXES = ("teacher.", "distillation_loss.")
 
 
 def cosine_with_warmup_multiplier(
@@ -294,13 +297,18 @@ class BaselineModule(L.LightningModule):
             raise RuntimeError("trainer estimated no optimizer steps")
         return total_steps
 
-    def configure_optimizers(self) -> dict[str, Any]:
-        groups = parameter_groups(
+    def _optimizer_groups(self) -> list[dict[str, Any]]:
+        return parameter_groups(
             self.model,
             head_learning_rate=self.head_learning_rate,
             backbone_learning_rate=self.backbone_learning_rate,
         )
-        optimizer = torch.optim.AdamW(groups, weight_decay=self.weight_decay)
+
+    def configure_optimizers(self) -> dict[str, Any]:
+        optimizer = torch.optim.AdamW(
+            self._optimizer_groups(),
+            weight_decay=self.weight_decay,
+        )
 
         total_steps = self._estimated_total_steps()
         warmup_steps = min(total_steps, math.ceil(total_steps * self.warmup_fraction))
@@ -403,18 +411,21 @@ class DistillationModule(BaselineModule):
         del batch_idx
         images = batch["pixel_values"]
         labels = batch["labels"]
-        task_loss, scores = self._loss_and_scores(images, labels)
-        # Lightning switches all child modules with the parent.  Reassert this
-        # immediately before every teacher forward so the teacher cannot ever
-        # update BatchNorm/dropout state during a student step.
-        self.teacher.eval()
-        with torch.no_grad():
-            teacher_scores = self.teacher(images)
-        result = self.distillation_loss(
-            self._distillation_logits(self.model, scores),
-            self._distillation_logits(self.teacher, teacher_scores),
-            labels,
-        )
+        if getattr(self.distillation_loss, "requires_features", False):
+            task_loss, scores, result = self._feature_distillation(images, labels)
+        else:
+            task_loss, scores = self._loss_and_scores(images, labels)
+            # Lightning switches all child modules with the parent.  Reassert
+            # this immediately before every teacher forward so the teacher
+            # cannot ever update BatchNorm/dropout state during a student step.
+            self.teacher.eval()
+            with torch.no_grad():
+                teacher_scores = self.teacher(images)
+            result = self.distillation_loss(
+                self._distillation_logits(self.model, scores),
+                self._distillation_logits(self.teacher, teacher_scores),
+                labels,
+            )
         if not isinstance(result, DistillationLossResult):
             raise TypeError("distillation_loss must return DistillationLossResult")
         if result.total.ndim != 0:
@@ -441,10 +452,47 @@ class DistillationModule(BaselineModule):
             )
         return loss
 
+    def _feature_distillation(
+        self,
+        images: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, DistillationLossResult]:
+        with capture_features(self.model) as student_features:
+            task_loss, scores = self._loss_and_scores(images, labels)
+        self.teacher.eval()
+        with torch.no_grad(), capture_features(self.teacher) as teacher_features:
+            self.teacher(images)
+        if student_features.value is None or teacher_features.value is None:
+            raise RuntimeError("feature tap did not fire during the forward pass")
+        result = self.distillation_loss(
+            student_features.value,
+            teacher_features.value,
+            labels,
+        )
+        return task_loss, scores, result
+
+    def _optimizer_groups(self) -> list[dict[str, Any]]:
+        """Also optimize trainable distillation heads, such as SARD projections."""
+        groups = super()._optimizer_groups()
+        auxiliary = _unique_trainable(self.distillation_loss.parameters())
+        if auxiliary:
+            groups.append(
+                {
+                    "name": "distillation",
+                    "params": auxiliary,
+                    "lr": self.head_learning_rate,
+                }
+            )
+        return groups
+
     def state_dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Exclude frozen teacher weights from student deployment checkpoints."""
+        """Keep only student weights in deployment checkpoints.
+
+        The frozen teacher and any training-only distillation heads are
+        excluded so a distilled checkpoint loads into a plain BaselineModule.
+        """
         state = super().state_dict(*args, **kwargs)
-        for key in [key for key in state if key.startswith("teacher.")]:
+        for key in [key for key in state if key.startswith(_TRAINING_ONLY_PREFIXES)]:
             state.pop(key)
         return state
 
@@ -460,7 +508,9 @@ class DistillationModule(BaselineModule):
             assign=assign,
         )
         missing = [
-            key for key in incompatible.missing_keys if not key.startswith("teacher.")
+            key
+            for key in incompatible.missing_keys
+            if not key.startswith(_TRAINING_ONLY_PREFIXES)
         ]
         unexpected = list(incompatible.unexpected_keys)
         if strict and (missing or unexpected):
