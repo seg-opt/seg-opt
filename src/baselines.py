@@ -13,6 +13,7 @@ from src.data.dataset import (
     load_split_manifest,
 )
 from src.distillation.bpkd import BPKDLoss, PixelWiseKDLoss
+from src.distillation.sard import SARDLoss
 from src.data.processors import SegmentationImageProcessor
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
 from src.models.loaders import load_model
@@ -116,6 +117,8 @@ def build_baseline(
                 config.distillation,
                 num_classes=config.num_classes,
                 ignore_index=config.loss.ignore_index,
+                student=model,
+                teacher=teacher,
             ),
             **module_args,
         )
@@ -139,7 +142,27 @@ def build_distillation_loss(
     *,
     num_classes: int,
     ignore_index: int,
-) -> BPKDLoss | PixelWiseKDLoss:
+    student: SemanticSegmenter | None = None,
+    teacher: SemanticSegmenter | None = None,
+) -> BPKDLoss | PixelWiseKDLoss | SARDLoss:
+    if config.method == "sard":
+        if student is None or teacher is None:
+            raise ValueError("SARD needs the student and teacher to size its projections")
+        return SARDLoss(
+            student_channels=student.distillation_feature_tap().channels,
+            teacher_channels=teacher.distillation_feature_tap().channels,
+            projection_channels=config.sard_projection_channels,
+            denoiser_hidden_channels=config.sard_denoiser_hidden_channels,
+            feature_weight=config.sard_feature_weight,
+            distribution_weight=config.sard_distribution_weight,
+            edge_weight=config.sard_edge_weight,
+            corner_weight=config.sard_corner_weight,
+            density_weight=config.sard_density_weight,
+            density_radius=config.sard_density_radius,
+            noise_alpha=config.sard_noise_alpha,
+            spatial_stride=config.spatial_stride,
+            ignore_index=ignore_index,
+        )
     if config.method == "vanilla":
         return PixelWiseKDLoss(
             num_classes=num_classes,
