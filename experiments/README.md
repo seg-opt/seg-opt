@@ -13,6 +13,12 @@ any distillation.
 [`bpkd/`](bpkd/) contains the prepared BPKD experiment matrix. Do not submit
 it until the clean baseline benchmark establishes a positive teacher margin.
 
+## SARD
+
+[`sard/`](sard/) tests structure-aware feature distillation from a SegFormer-B4
+teacher into Fast-SCNN against task-only, vanilla logit KD and uniform-weight
+controls.
+
 ## Exploratory work
 
 [`dinov3_demo/`](dinov3_demo/) and [`dinov3_probe_v2/`](dinov3_probe_v2/) are

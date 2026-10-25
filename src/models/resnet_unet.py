@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from src.models.segmentation import SemanticSegmenter
+from src.models.segmentation import FeatureTap, SemanticSegmenter
 
 
 class DecoderBlock(nn.Module):
@@ -89,6 +89,10 @@ class ResNet34UNet(SemanticSegmenter):
 
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
         return self.encoder.parameters()
+
+    def distillation_feature_tap(self) -> FeatureTap:
+        """Last decoder features at stride 2, before the classifier."""
+        return FeatureTap(self.classifier, 32, use_input=True)
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         output_size = pixel_values.shape[-2:]
