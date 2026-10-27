@@ -12,6 +12,7 @@ BaselineName = Literal[
     "segformer_b2",
     "segformer_b4",
     "dinov3_vitl16",
+    "dinov3_vitl16_mask2former",
     "mask2former_swinl",
 ]
 
@@ -22,6 +23,7 @@ BASELINE_NAMES = {
     "segformer_b2",
     "segformer_b4",
     "dinov3_vitl16",
+    "dinov3_vitl16_mask2former",
     "mask2former_swinl",
 }
 CLASS_NAMES = ("background", "sky", "small_rock", "large_rock")
@@ -40,6 +42,7 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
 class ModelConfig:
     name: BaselineName
     model_id: str | None = None
+    decoder_model_id: str | None = None
     pretrained: bool = True
     freeze_backbone: bool = False
 
@@ -51,8 +54,11 @@ class ModelConfig:
             )
         if self.name == "fast_scnn" and self.pretrained:
             raise ValueError("Fast-SCNN has no pretrained weights")
-        if self.name == "dinov3_vitl16" and not self.freeze_backbone:
-            raise ValueError("the canonical DINOv3 baseline is a frozen linear probe")
+        if (
+            self.name in {"dinov3_vitl16", "dinov3_vitl16_mask2former"}
+            and not self.freeze_backbone
+        ):
+            raise ValueError("the canonical DINOv3 baselines require a frozen backbone")
 
 
 @dataclass(frozen=True)
@@ -358,7 +364,13 @@ def load_config(path: str | Path) -> BaselineConfig:
     model_raw = _mapping(raw["model"], "model")
     _reject_unknown_fields(
         model_raw,
-        {"name", "model_id", "pretrained", "freeze_backbone"},
+        {
+            "name",
+            "model_id",
+            "decoder_model_id",
+            "pretrained",
+            "freeze_backbone",
+        },
         "model",
     )
     data_raw = _mapping(raw["data"], "data")

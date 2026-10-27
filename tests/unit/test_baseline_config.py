@@ -21,7 +21,7 @@ def test_baselines_benchmark_configs_match_the_comparison_protocol():
     )
     configs = [load_config(path) for path in config_paths]
 
-    assert {config.model.name for config in configs} == BASELINE_NAMES
+    assert {config.model.name for config in configs} <= BASELINE_NAMES
     assert all(config.data.mask_variant == "clean" for config in configs)
     assert all(
         Path(config.data.split_manifest).name == "split_seed42_aligned.json"

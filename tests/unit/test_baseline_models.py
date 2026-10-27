@@ -75,7 +75,7 @@ class TinyMask2Former(nn.Module):
         )
 
 
-def test_baseline_dispatch_is_limited_to_the_seven_benchmark_models():
+def test_baseline_dispatch_is_limited_to_the_supported_benchmark_models():
     assert BASELINE_MODEL_NAMES == (
         "fast_scnn",
         "resnet34_unet",
@@ -83,6 +83,7 @@ def test_baseline_dispatch_is_limited_to_the_seven_benchmark_models():
         "segformer_b2",
         "segformer_b4",
         "dinov3_vitl16",
+        "dinov3_vitl16_mask2former",
         "mask2former_swinl",
     )
     with pytest.raises(ValueError, match="unsupported baseline"):
