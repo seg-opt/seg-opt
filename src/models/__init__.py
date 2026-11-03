@@ -4,6 +4,10 @@ from src.models.loaders import (
     load_model,
     load_resnet34_unet,
 )
+from src.models.dinov3_mask2former import (
+    DINOv3Mask2FormerSegmenter,
+    DINOv3PyramidBackbone,
+)
 from src.models.fast_scnn import FastSCNN
 from src.models.resnet_unet import ResNet34UNet
 from src.models.segmentation import (
@@ -19,6 +23,8 @@ __all__ = [
     "load_model",
     "load_resnet34_unet",
     "DINOv3Segmenter",
+    "DINOv3Mask2FormerSegmenter",
+    "DINOv3PyramidBackbone",
     "FastSCNN",
     "Mask2FormerSegmenter",
     "ResNet34UNet",

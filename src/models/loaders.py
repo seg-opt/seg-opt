@@ -1,5 +1,9 @@
 from collections.abc import Sequence
 
+from src.models.dinov3_mask2former import (
+    DINOv3Mask2FormerSegmenter,
+    DINOv3PyramidBackbone,
+)
 from src.models.fast_scnn import FastSCNN
 from src.models.resnet_unet import ResNet34UNet
 from src.models.segmentation import (
@@ -17,6 +21,7 @@ BASELINE_MODEL_NAMES = (
     "segformer_b2",
     "segformer_b4",
     "dinov3_vitl16",
+    "dinov3_vitl16_mask2former",
     "mask2former_swinl",
 )
 
@@ -25,8 +30,11 @@ DEFAULT_MODEL_IDS = {
     "segformer_b2": "nvidia/mit-b2",
     "segformer_b4": "nvidia/mit-b4",
     "dinov3_vitl16": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+    "dinov3_vitl16_mask2former": "facebook/dinov3-vitl16-pretrain-lvd1689m",
     "mask2former_swinl": "facebook/mask2former-swin-large-ade-semantic",
 }
+
+DEFAULT_MASK2FORMER_DECODER_ID = "facebook/mask2former-swin-large-ade-semantic"
 
 
 def _class_names(
@@ -141,6 +149,37 @@ def _build_mask2former(
     )
 
 
+def _build_dinov3_mask2former(
+    model_id: str,
+    decoder_model_id: str,
+    class_names: Sequence[str],
+    ignore_index: int = 255,
+) -> DINOv3Mask2FormerSegmenter:
+    from transformers import AutoModel, Mask2FormerForUniversalSegmentation
+
+    id2label, label2id = _label_maps(class_names)
+    model = Mask2FormerForUniversalSegmentation.from_pretrained(
+        decoder_model_id,
+        num_labels=len(class_names),
+        id2label=id2label,
+        label2id=label2id,
+        ignore_mismatched_sizes=True,
+    )
+    pixel_level_module = model.model.pixel_level_module
+    output_channels = tuple(pixel_level_module.encoder.channels)
+    backbone = AutoModel.from_pretrained(model_id)
+    pixel_level_module.encoder = DINOv3PyramidBackbone(
+        backbone,
+        output_channels,
+        freeze_backbone=True,
+    )
+    return DINOv3Mask2FormerSegmenter(
+        model,
+        class_names=class_names,
+        ignore_index=ignore_index,
+    )
+
+
 def load_model(
     model_name: str,
     *,
@@ -148,6 +187,7 @@ def load_model(
     num_classes: int | None = None,
     pretrained: bool | None = None,
     model_id: str | None = None,
+    decoder_model_id: str | None = None,
     ignore_index: int = 255,
 ) -> SemanticSegmenter:
     """Build one of the supervised segmentation benchmark models."""
@@ -181,6 +221,13 @@ def load_model(
             freeze_backbone=True,
             head_type="linear",
             head_batch_norm=True,
+        )
+    if model_name == "dinov3_vitl16_mask2former":
+        return _build_dinov3_mask2former(
+            model_id or DEFAULT_MODEL_IDS[model_name],
+            decoder_model_id or DEFAULT_MASK2FORMER_DECODER_ID,
+            names,
+            ignore_index=ignore_index,
         )
     return _build_mask2former(
         model_id or DEFAULT_MODEL_IDS[model_name],

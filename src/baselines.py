@@ -83,6 +83,7 @@ def build_baseline(
     model = load_model(
         config.model.name,
         model_id=config.model.model_id,
+        decoder_model_id=config.model.decoder_model_id,
         pretrained=config.model.pretrained,
         class_names=config.data.class_names,
         ignore_index=config.loss.ignore_index,
@@ -235,6 +236,7 @@ def load_distillation_teacher(config: BaselineConfig) -> SemanticSegmenter:
     teacher = load_model(
         teacher_config.model.name,
         model_id=teacher_config.model.model_id,
+        decoder_model_id=teacher_config.model.decoder_model_id,
         pretrained=teacher_config.model.pretrained,
         class_names=teacher_config.data.class_names,
         ignore_index=teacher_config.loss.ignore_index,
