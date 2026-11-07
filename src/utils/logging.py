@@ -33,15 +33,18 @@ def configure_logging(output_dir: str | Path, verbose: bool = False) -> logging.
     return logger
 
 
-def make_wandb_logger(output_dir: str | Path) -> WandbLogger:
+def make_wandb_logger(
+    output_dir: str | Path,
+    run_name: str | None = None,
+) -> WandbLogger:
     output_dir = Path(output_dir)
     wandb_dir = output_dir / "wandb"
     wandb_dir.mkdir(parents=True, exist_ok=True)
-    job_id = os.getenv("SLURM_JOB_ID")
-    run_name = output_dir.name if job_id is None else f"{output_dir.name}-{job_id}"
+    base_name = run_name or output_dir.name
+    execution_id = os.getenv("SLURM_JOB_ID", f"local-{os.getpid()}")
     return WandbLogger(
         project=os.getenv("WANDB_PROJECT", "seg-opt"),
-        name=run_name,
+        name=f"{base_name}-{execution_id}",
         save_dir=wandb_dir,
         log_model=False,
     )
