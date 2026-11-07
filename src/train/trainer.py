@@ -535,6 +535,7 @@ def create_trainer(
     profiler: Any = None,
     fast_dev_run: bool = False,
     enable_wandb: bool = True,
+    wandb_run_name: str | None = None,
 ) -> L.Trainer:
     """Create the canonical trainer.
 
@@ -577,7 +578,11 @@ def create_trainer(
         gradient_clip_val=1.0,
         log_every_n_steps=log_every_n_steps,
         callbacks=callbacks,
-        logger=make_wandb_logger(output_dir) if enable_wandb else False,
+        logger=(
+            make_wandb_logger(output_dir, run_name=wandb_run_name)
+            if enable_wandb
+            else False
+        ),
         profiler=profiler,
         fast_dev_run=False,
         limit_train_batches=1 if fast_dev_run else 1.0,

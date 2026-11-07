@@ -61,6 +61,11 @@ def _checkpoint_callback(trainer: L.Trainer) -> ModelCheckpoint:
     return callbacks[0]
 
 
+def _wandb_run_name(config_path: Path, seed: int) -> str:
+    parts = [config_path.parent.name, config_path.stem, f"seed{seed}"]
+    return "-".join(part for part in parts if part)
+
+
 def main() -> None:
     args = parse_args()
     if args.max_steps is not None and args.max_steps <= 0:
@@ -95,6 +100,7 @@ def main() -> None:
         enable_nvtx_ranges=os.getenv("SEG_OPT_NVTX_RANGES") == "1",
         fast_dev_run=args.fast_dev_run,
         enable_wandb=not args.offline,
+        wandb_run_name=_wandb_run_name(args.config, config.training.seed),
     )
     if trainer.logger is not None:
         trainer.logger.log_hyperparams(resolved_config(config))
