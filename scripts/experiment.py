@@ -278,10 +278,14 @@ def execute(command, **kwargs):
 def job_environment(manifest):
     profile = manifest["profile"]
     environment = os.environ.copy()
+    for key in ("PYTHONPATH", "PYTHONHOME"):
+        environment.pop(key, None)
     environment.update({key.upper(): str(profile[key]) for key in
                         ("image_path", "data_path", "output_path", "cache_path", "wandb_mode", "wandb_project")})
     environment.update(REPO_PATH=manifest["snapshot"], SLURM_SUBMIT_DIR=manifest["snapshot"])
     for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
+        environment[prefix + "PYTHONPATH"] = "/workspace"
+        environment[prefix + "PYTHONHOME"] = ""
         environment[prefix + "WANDB_MODE"] = profile["wandb_mode"]
         environment[prefix + "WANDB_PROJECT"] = profile["wandb_project"]
     return environment
@@ -405,11 +409,15 @@ def retry(run):
         state = status(run)["stages"]
         if any(record["state"] not in TERMINAL for record in state.values()):
             raise ValueError("cannot retry while any stage is live or scheduler status is unknown")
-        selected = [name for name in manifest["stages"] if name not in state or state[name]["state"] != "COMPLETED"]
-        if selected and "summary" not in selected:
-            selected.append("summary")
+        selected = {name for name in manifest["stages"] if name not in state or state[name]["state"] != "COMPLETED"}
+        while True:
+            descendants = {name for name, definition in manifest["stages"].items()
+                           if selected.intersection(definition["needs"])}
+            if descendants <= selected:
+                break
+            selected.update(descendants)
         if selected:
-            schedule(manifest, selected)
+            schedule(manifest, [name for name in manifest["stages"] if name in selected])
     return str(run)
 
 
@@ -454,10 +462,6 @@ def validate_gate(baseline, teacher):
 
 def protocol(directory):
     directory = Path(directory)
-    for candidate in (directory.with_name(directory.name + ".protocol.json"),
-                      directory.parent / "protocol.json", directory / "protocol.json"):
-        if candidate.is_file():
-            return read_json(candidate)
     try:
         import yaml
         with (directory / "config.yaml").open(encoding="utf-8") as stream:
@@ -473,9 +477,7 @@ def compare(paths):
     reference_protocol = None
     for value in paths:
         directory = Path(value)
-        metrics = read_json(directory / "metrics.json")
-        if metrics.get("schema_version") != 2:
-            raise ValueError(f"requires schema 2 metrics: {directory}")
+        metrics = verified_artifact(directory, full=False)
         scores = {"validation_miou": metrics["validation"]["miou"],
                   "validation_small_rock_iou": metrics["validation"]["per_class"]["small_rock"]["iou"],
                   "test_miou": metrics["test"]["miou"],
@@ -484,7 +486,7 @@ def compare(paths):
             scores["test_trimap_small_rock_iou"] = metrics["test"]["trimap"]["per_class"]["small_rock"]["iou"]
         settings = protocol(directory)
         if settings is None:
-            report["warnings"].append(f"{directory}: training protocol unavailable")
+            report["warnings"].append(f"{directory}: training protocol unavailable/unverified; requires verified config.yaml and PyYAML")
         entry = {"path": str(directory), "model": metrics.get("model"), "run_kind": metrics.get("run_kind"),
                  "selection": metrics.get("selection"), "scores": scores, "distillation": metrics.get("distillation")}
         if reference is not None:
@@ -496,7 +498,8 @@ def compare(paths):
                 if (reference.get("distillation") or {}).get(key) != (metrics.get("distillation") or {}).get(key):
                     report["warnings"].append(f"{directory}: distillation {key} differs")
             if settings is not None and reference_protocol is not None:
-                for key in ("batch_size", "accumulate_grad_batches", "epochs", "learning_rate", "precision", "seed"):
+                for key in ("batch_size", "accumulate_grad_batches", "epochs", "learning_rate", "precision", "seed",
+                            "weight_decay", "warmup_fraction", "backbone_learning_rate"):
                     if settings.get("training", {}).get(key) != reference_protocol.get("training", {}).get(key):
                         report["warnings"].append(f"{directory}: training {key} differs")
                 for key in ("data", "loss", "distillation", "metrics"):

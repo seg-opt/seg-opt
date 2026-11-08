@@ -82,12 +82,12 @@ class ExperimentRunnerTests(unittest.TestCase):
     def manifest(self, run):
         return json.loads((run / "manifest.json").read_text())
 
-    def artifact(self, name, miou=0.8, small_rock=0.6):
+    def artifact(self, name, miou=0.8, small_rock=0.6, settings=None):
         directory = self.output / name
         (directory / "checkpoints").mkdir(parents=True)
         (directory / "checkpoints/best.ckpt").write_bytes(name.encode())
         (directory / "split.json").write_text('{"train":["a"],"val":["b"],"test":["c"]}')
-        (directory / "config.yaml").write_text("model: fixture\n")
+        (directory / "config.yaml").write_text(json.dumps(settings) if settings is not None else "model: fixture\n")
         sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
         metrics = {
             "schema_version": 2, "run_kind": "full", "model": {"name": name},
@@ -119,6 +119,8 @@ class ExperimentRunnerTests(unittest.TestCase):
         experiment.atomic_json(directory / "state.json", {"state": "completed"})
         if name == "summary":
             experiment.atomic_json(directory / "summary.json", {"failures": {}})
+        elif name == "gate":
+            experiment.atomic_json(directory / "gate.json", {"state": "passed"})
         else:
             source = self.artifact("completed-" + name)
             target = Path(experiment.stage_artifact(self.manifest(run), name))
@@ -322,6 +324,9 @@ class ExperimentRunnerTests(unittest.TestCase):
         self.assertEqual(status["stages"]["student"]["state"], "RUNNING")
         with self.assertRaisesRegex(ValueError, "live"):
             experiment.retry(run)
+        self.states = {}
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            experiment.retry(run)
         self.assertEqual(sum(call[0][0] == "sbatch" for call in self.calls), 3)
 
     def test_retry_preserves_completed_attempts_and_uses_new_failed_attempts(self):
@@ -337,6 +342,47 @@ class ExperimentRunnerTests(unittest.TestCase):
         self.assertEqual(status["stages"]["summary"]["attempt"], "attempt-0002")
         self.assertFalse((run / "artifacts/student/attempt-0002").exists())
 
+    def test_retry_missing_teacher_renews_completed_descendants_in_manifest_order(self):
+        run = self.pipeline()
+        manifest = self.manifest(run)
+        for name in manifest["stages"]:
+            self.complete_stage(run, name)
+        self.states = {str(job): ("COMPLETED", "0:0") for job in range(101, 107)}
+        checkpoint = Path(experiment.stage_artifact(manifest, "teacher")) / "checkpoints/best.ckpt"
+        checkpoint.unlink()
+        self.assertEqual(experiment.status(run)["stages"]["teacher"]["state"], "FAILED")
+        old_files = {path: path.read_bytes() for parent in (run / "stages", run / "artifacts")
+                     for path in parent.rglob("*") if path.is_file()}
+        experiment.retry(run)
+        self.assertEqual(experiment.latest_attempt(run, "teacher-smoke").name, "attempt-0001")
+        for name in ("teacher", "gate", "kd-smoke", "kd", "summary"):
+            with self.subTest(stage=name):
+                self.assertEqual(experiment.latest_attempt(run, name).name, "attempt-0002")
+                self.assertEqual(experiment.stage_artifact(manifest, name),
+                                 str(run / "artifacts" / name / "attempt-0002"))
+                self.assertFalse(Path(experiment.stage_artifact(manifest, name)).exists())
+        jobs = [command for command, _ in self.calls if command[0] == "sbatch"][6:]
+        self.assertEqual([command[-1] for command in jobs],
+                         [name + "/attempt-0002" for name in ("teacher", "gate", "kd-smoke", "kd", "summary")])
+        self.assertIn("--dependency=afterok:107", jobs[1])
+        self.assertIn("--dependency=afterok:109", jobs[3])
+        self.assertIn("--dependency=afterany:101:107:108:109:110", jobs[4])
+        self.assertTrue(all(path.read_bytes() == content for path, content in old_files.items()))
+
+    def test_retry_missing_kd_keeps_valid_teacher_gate_and_smoke(self):
+        run = self.pipeline()
+        manifest = self.manifest(run)
+        for name in manifest["stages"]:
+            self.complete_stage(run, name)
+        self.states = {str(job): ("COMPLETED", "0:0") for job in range(101, 107)}
+        (Path(experiment.stage_artifact(manifest, "kd")) / "checkpoints/best.ckpt").unlink()
+        experiment.retry(run)
+        for name in ("teacher-smoke", "teacher", "gate", "kd-smoke"):
+            self.assertEqual(experiment.latest_attempt(run, name).name, "attempt-0001")
+        jobs = [command for command, _ in self.calls if command[0] == "sbatch"][6:]
+        self.assertEqual([command[-1] for command in jobs], ["kd/attempt-0002", "summary/attempt-0002"])
+        self.assertIn("--dependency=afterok:104", jobs[0])
+
     def test_concurrent_atomic_stage_records_do_not_lose_updates(self):
         run = self.submit("submit", "experiments/student.yaml")
         manifest_before = (run / "manifest.json").read_bytes()
@@ -347,23 +393,85 @@ class ExperimentRunnerTests(unittest.TestCase):
         self.assertTrue(all(json.loads(path.read_text())["state"] == "completed" for path in paths))
         self.assertEqual((run / "manifest.json").read_bytes(), manifest_before)
 
+    def test_compare_rejects_changed_or_deleted_artifact_files(self):
+        baseline = self.artifact("baseline")
+        for filename in ("config.yaml", "split.json", "checkpoints/best.ckpt"):
+            for mutation in ("changed", "deleted"):
+                with self.subTest(file=filename, mutation=mutation):
+                    artifact = self.artifact(filename.replace("/", "-") + "-" + mutation)
+                    path = artifact / filename
+                    if mutation == "changed":
+                        path.write_bytes(b"tampered")
+                    else:
+                        path.unlink()
+                    with self.assertRaisesRegex(ValueError, "artifact hash mismatch"):
+                        experiment.compare([baseline, artifact])
+
+    def test_compare_downgrades_unbound_sidecars_even_with_valid_config_hash(self):
+        baseline = self.artifact("baseline")
+        for location in ("neighbor", "parent", "artifact"):
+            artifact = self.artifact("unbound-" + location)
+            path = {"neighbor": artifact.with_name(artifact.name + ".protocol.json"),
+                    "parent": artifact.parent / "protocol.json",
+                    "artifact": artifact / "protocol.json"}[location]
+            path.write_text(json.dumps({"config_sha256": experiment.sha256(artifact / "config.yaml"),
+                                        "training": {"batch_size": 999}}))
+            with self.subTest(location=location), patch.dict("sys.modules", {"yaml": None}):
+                report = experiment.compare([baseline, artifact])
+                self.assertTrue(any(str(artifact) in warning and "unverified" in warning
+                                    for warning in report["warnings"]))
+            path.unlink()
+
+    def test_compare_verified_yaml_overrides_tampered_sidecar(self):
+        baseline = self.artifact("baseline")
+        kd = self.artifact("kd")
+        for directory in (baseline, kd):
+            config = directory / "config.yaml"
+            config.write_text(json.dumps({"training": {"batch_size": 16}}))
+            metrics = experiment.read_json(directory / "metrics.json")
+            metrics["config_sha256"] = experiment.sha256(config)
+            experiment.atomic_json(directory / "metrics.json", metrics)
+        sidecar = kd.with_name(kd.name + ".protocol.json")
+        sidecar.write_text(json.dumps({"config_sha256": experiment.sha256(kd / "config.yaml"),
+                                       "training": {"batch_size": 999}}))
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, kd])
+        self.assertEqual(report["warnings"], [])
+        metrics = experiment.read_json(kd / "metrics.json")
+        metrics["run_kind"] = "smoke"
+        experiment.atomic_json(kd / "metrics.json", metrics)
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, kd])
+        self.assertEqual(len(report["artifacts"]), 2)
+        self.assertTrue(any("not a full scientific run" in warning for warning in report["warnings"]))
+
     def test_compare_reports_deltas_and_protocol_warnings_without_ranking(self):
         baseline = self.artifact("baseline")
         kd = self.artifact("kd", 0.82, 0.65)
         for directory, batch in ((baseline, 16), (kd, 8)):
-            (directory / "protocol.json").write_text(json.dumps({
+            (directory / "config.yaml").write_text(json.dumps({
                 "training": {"batch_size": batch, "accumulate_grad_batches": 16 // batch},
                 "distillation": None if batch == 16 else {"method": "vanilla"}}))
-        report = experiment.compare([baseline, kd])
+            metrics = experiment.read_json(directory / "metrics.json")
+            metrics["config_sha256"] = experiment.sha256(directory / "config.yaml")
+            if directory == kd:
+                metrics["distillation"] = {"method": "vanilla", "settings": {"weight": 1}}
+            experiment.atomic_json(directory / "metrics.json", metrics)
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, kd])
         self.assertAlmostEqual(report["artifacts"][1]["delta"]["validation_miou"], 0.02)
         self.assertTrue(any("batch" in warning for warning in report["warnings"]))
+        self.assertTrue(any("distillation method differs" in warning for warning in report["warnings"]))
         self.assertNotIn("ranking", report)
-        (kd / "protocol.json").unlink()
         with patch.dict("sys.modules", {"yaml": None}):
             report = experiment.compare([baseline, kd])
         self.assertTrue(any("training protocol unavailable" in warning for warning in report["warnings"]))
 
-    def test_compare_reads_runner_protocol_next_to_artifact_and_warns_on_batch(self):
+    def test_compare_does_not_trust_runner_protocol_without_yaml(self):
         baseline = self.artifact("baseline")
         kd = self.artifact("kd", 0.82, 0.65)
         for directory, batch in ((baseline, 16), (kd, 8)):
@@ -371,8 +479,55 @@ class ExperimentRunnerTests(unittest.TestCase):
                 "training": {"batch_size": batch, "accumulate_grad_batches": 16 // batch}}))
         with patch.dict("sys.modules", {"yaml": None}):
             report = experiment.compare([baseline, kd])
-        self.assertFalse(any("unavailable" in warning for warning in report["warnings"]))
-        self.assertTrue(any("batch_size" in warning for warning in report["warnings"]))
+        self.assertEqual(sum("training protocol unavailable/unverified" in warning
+                             for warning in report["warnings"]), 2)
+        self.assertFalse(any("batch_size" in warning for warning in report["warnings"]))
+
+    def test_compare_warns_on_each_optimizer_protocol_difference(self):
+        training = {"batch_size": 16, "accumulate_grad_batches": 1, "epochs": 20,
+                    "learning_rate": 0.0005, "precision": "bf16", "seed": 42,
+                    "weight_decay": 0.05, "warmup_fraction": 0.05,
+                    "backbone_learning_rate": 0.00003, "output_dir": "/output/baseline"}
+        baseline = self.artifact("baseline", settings={"training": training})
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for field, value in (("weight_decay", 0.1), ("warmup_fraction", 0.1),
+                             ("backbone_learning_rate", 0.00006)):
+            artifact = self.artifact(field, settings={"training": {**training, field: value}})
+            with self.subTest(field=field), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare([baseline, artifact])
+                self.assertEqual(report["warnings"], [f"{artifact}: training {field} differs"])
+        routed = self.artifact("routed", settings={"training": {**training, "output_dir": "/output/kd"}})
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, routed])
+        self.assertEqual(report["warnings"], [])
+
+    def test_compare_uses_real_verified_yaml_when_parser_is_available(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("real PyYAML comparison is checked in the CPU container")
+        training = {"batch_size": 16, "weight_decay": 0.05, "warmup_fraction": 0.05,
+                    "backbone_learning_rate": 0.00003, "output_dir": "/output/baseline"}
+        baseline = self.artifact("baseline")
+        kd = self.artifact("kd")
+        for artifact in (baseline, kd):
+            (artifact / "config.yaml").write_text(yaml.safe_dump({"training": training}))
+            metrics = experiment.read_json(artifact / "metrics.json")
+            metrics["config_sha256"] = experiment.sha256(artifact / "config.yaml")
+            experiment.atomic_json(artifact / "metrics.json", metrics)
+        sidecar = kd.with_name(kd.name + ".protocol.json")
+        sidecar.write_text(json.dumps({"config_sha256": experiment.sha256(kd / "config.yaml"),
+                                       "training": {**training, "weight_decay": 99}}))
+        self.assertEqual(experiment.compare([baseline, kd])["warnings"], [])
+        for field in ("weight_decay", "warmup_fraction", "backbone_learning_rate"):
+            with self.subTest(field=field):
+                (kd / "config.yaml").write_text(yaml.safe_dump({"training": {**training, field: 0.1}}))
+                metrics = experiment.read_json(kd / "metrics.json")
+                metrics["config_sha256"] = experiment.sha256(kd / "config.yaml")
+                experiment.atomic_json(kd / "metrics.json", metrics)
+                self.assertEqual(experiment.compare([baseline, kd])["warnings"],
+                                 [f"{kd}: training {field} differs"])
 
     def test_completed_scheduler_without_valid_artifacts_is_not_scientific_success(self):
         run = self.submit("submit", "experiments/student.yaml")
@@ -422,6 +577,27 @@ class ExperimentRunnerTests(unittest.TestCase):
                                      "python", "-m", "scripts.experiment"])
         self.assertIn("/output/experiments/" + run.name + "/manifest.json", command)
         self.assertEqual(invoke.call_args.kwargs["env"]["REPO_PATH"], str(run / "source"))
+
+    def test_managed_schedule_and_worker_environment_reject_inherited_python_paths(self):
+        poison = {"PYTHONPATH": "/outside/package", "PYTHONHOME": "/outside/python"}
+        for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
+            poison[prefix + "PYTHONPATH"] = "/outside/package"
+            poison[prefix + "PYTHONHOME"] = "/outside/python"
+        with patch.dict(os.environ, poison):
+            run = self.submit("submit", "experiments/student.yaml")
+            environments = [kwargs["env"] for command, kwargs in self.calls if command[0] == "sbatch"]
+            args = experiment.build_parser().parse_args([
+                "worker", str(run / "manifest.json"), "student-smoke/attempt-0001"])
+            with patch.object(experiment.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as invoke:
+                experiment.worker(args)
+            environments.append(invoke.call_args.kwargs["env"])
+        for environment in environments:
+            with self.subTest(environment=environment["REPO_PATH"]):
+                self.assertNotIn("PYTHONPATH", environment)
+                self.assertNotIn("PYTHONHOME", environment)
+                for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
+                    self.assertEqual(environment[prefix + "PYTHONPATH"], "/workspace")
+                    self.assertEqual(environment[prefix + "PYTHONHOME"], "")
 
     def test_profile_does_not_capture_arbitrary_secrets(self):
         profile = json.loads(self.profile.read_text())

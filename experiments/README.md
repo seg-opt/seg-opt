@@ -73,6 +73,9 @@ per-attempt `job.json` records. Source snapshots exclude results, hidden files,
 caches, virtual environments and credentials. Artifacts use unique
 workflow/stage/attempt paths rather than overwriting canonical config outputs.
 Scientific artifacts retain schema version 2. Do not edit managed snapshots.
+Managed jobs clear inherited host `PYTHONPATH`/`PYTHONHOME` and pin both
+Singularity/Apptainer Python paths to `/workspace`, the verified source snapshot.
+Direct `scripts/train.sbatch --python-path` usage remains available for legacy jobs.
 
 ```bash
 python3 -S scripts/experiment.py status "$RUN_DIRECTORY"
@@ -80,11 +83,19 @@ python3 -S scripts/experiment.py retry "$RUN_DIRECTORY"
 python3 -S scripts/experiment.py compare "$BASELINE_ARTIFACTS" "$KD_ARTIFACTS"
 ```
 
-`retry` creates new attempts for terminal failed/blocked stages, preserving
-completed stages. It rejects live or unknown scheduler states and does not
-resume a training checkpoint. Inspect status first. `compare` reports existing
-scores and protocol warnings without ranking methods; matching report formats
-alone do not establish controlled comparisons.
+`retry` creates new attempts for terminal failed/blocked stages and all their
+downstream dependents, including completed dependents. Old attempts and artifacts
+remain untouched; unaffected completed ancestors are reused. It rejects live or
+unknown scheduler states and does not resume a training checkpoint. Inspect
+status first. `compare` verifies config, checkpoint and split hashes before
+reporting scores and protocol warnings, without ranking methods. Training
+settings come only from verified `config.yaml`, parsed with PyYAML (available
+in the development container). Stdlib-only `python3 -S` comparison reports
+training protocol as unavailable/unverified; unauthenticated protocol sidecars
+are not used, even when they include a valid config hash. Schema 2 is unchanged.
+Optimizer warnings include weight decay, warmup fraction and backbone learning
+rate; output-directory differences are intentionally ignored. Matching report
+formats alone do not establish controlled comparisons.
 
 SLURM owns the submitted dependencies, including the terminal summary on
 failure. After successful submission, no laptop-side wait, email setup, or
