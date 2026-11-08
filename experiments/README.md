@@ -167,3 +167,28 @@ that setting are not controlled CNN loss comparisons. These checked-in
 20-epoch configs describe historical experiments, not a new full-run budget.
 Future full runs target 100 epochs with matched supervised controls under a
 separate validation-based protocol; none are submitted by this packaging task.
+
+## Controlled CNN BPKD/SARD Pilot Protocol
+
+The five historical seed-42 ablations reuse the same ResNet34 teacher and
+Fast-SCNN supervised/vanilla references. All preserve the CNN data, task
+loss, metrics, and 20-epoch physical-batch-16/accumulation-1 training protocol
+above; only the distillation method/settings and output routing differ.
+
+| Variant | Config relative to experiments/ |
+| --- | --- |
+| BPKD body-only, weights 20/0 | bpkd/fast_scnn_from_resnet34_unet_body_only.yaml |
+| BPKD edge-only, weights 0/50 | bpkd/fast_scnn_from_resnet34_unet_edge_only.yaml |
+| BPKD combined, weights 20/50 | bpkd/fast_scnn_from_resnet34_unet_bpkd_w7.yaml |
+| Uniform SARD | sard/fast_scnn_sard_uniform_from_resnet34_unet.yaml |
+| Full SARD | sard/fast_scnn_sard_full_from_resnet34_unet.yaml |
+
+BPKD retains temperature 1, edge alpha 2, window 7, PRM and POM. SARD uses
+feature/distribution weights 1/0.5, noise alpha 0.5, density radius 7,
+projection width 256, and denoiser width 128. Full versus uniform changes
+only structure weights (2/1/1 versus 0/0/0). These are transferred starting
+values from another dataset protocol, not calibrated optima. No weights,
+features, or loss implementations are changed here. See [the SARD study
+protocol](sard/README.md#controlled-cnn-pilot) for feature alignment and
+artifact provenance. This single-seed pilot does not authorize further
+training or support hyperparameter selection using held-out test scores.

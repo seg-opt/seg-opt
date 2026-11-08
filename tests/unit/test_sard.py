@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -301,3 +302,44 @@ def test_checked_in_sard_configs(variant):
         "baselines_benchmark",
         "segformer_b4.yaml",
     )
+
+
+@pytest.mark.parametrize("variant", ["full", "uniform"])
+def test_resnet34_sard_configs_preserve_the_controlled_cnn_protocol(variant):
+    reference = load_config(
+        "experiments/logit_distillation/fast_scnn_from_resnet34_unet.yaml"
+    )
+    config = load_config(
+        f"experiments/sard/fast_scnn_sard_{variant}_from_resnet34_unet.yaml"
+    )
+
+    assert config.model == reference.model
+    assert config.data == reference.data
+    assert config.loss == reference.loss
+    assert config.metrics == reference.metrics
+    assert replace(
+        config.training, output_dir=reference.training.output_dir
+    ) == reference.training
+    assert config.training.batch_size == 16
+    assert config.training.accumulate_grad_batches == 1
+    assert config.training.seed == 42
+    assert config.training.epochs == 20
+    assert Path(config.training.output_dir).parts[-4:] == (
+        "sard", "fast_scnn_from_resnet34_unet", variant, "seed42"
+    )
+    distillation = config.distillation
+    assert distillation is not None and distillation.method == "sard"
+    assert reference.distillation is not None
+    assert distillation.teacher == reference.distillation.teacher
+    assert distillation.spatial_stride == 8
+    assert distillation.sard_feature_weight == 1.0
+    assert distillation.sard_distribution_weight == 0.5
+    assert distillation.sard_noise_alpha == 0.5
+    assert distillation.sard_density_radius == 7
+    assert distillation.sard_projection_channels == 256
+    assert distillation.sard_denoiser_hidden_channels == 128
+    assert (
+        distillation.sard_edge_weight,
+        distillation.sard_corner_weight,
+        distillation.sard_density_weight,
+    ) == ((2.0, 1.0, 1.0) if variant == "full" else (0.0, 0.0, 0.0))
