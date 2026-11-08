@@ -75,10 +75,11 @@ class TinyMask2Former(nn.Module):
         )
 
 
-def test_baseline_dispatch_is_limited_to_the_supported_benchmark_models():
+def test_baseline_dispatch_is_limited_to_supported_models():
     assert BASELINE_MODEL_NAMES == (
         "fast_scnn",
         "resnet34_unet",
+        "resnet101_unet",
         "segformer_b0",
         "segformer_b2",
         "segformer_b4",
@@ -123,6 +124,24 @@ def test_resnet34_unet_has_real_skips_and_full_resolution_output():
     assert model.decoder3.convolutions[0].in_channels == 256 + 128
     assert model.decoder2.convolutions[0].in_channels == 128 + 64
     assert model.decoder1.convolutions[0].in_channels == 64 + 64
+
+
+def test_resnet101_unet_supports_bottleneck_skips_and_backpropagation():
+    model = load_model("resnet101_unet", class_names=CLASS_NAMES, pretrained=False)
+    model.eval()
+
+    scores = model(torch.randn(2, 3, 32, 64))
+    scores.square().mean().backward()
+
+    assert scores.shape == (2, 4, 32, 64)
+    assert model.decoder4.convolutions[0].in_channels == 2048 + 1024
+    assert model.decoder3.convolutions[0].in_channels == 256 + 512
+    assert model.decoder2.convolutions[0].in_channels == 128 + 256
+    assert model.decoder1.convolutions[0].in_channels == 64 + 64
+    assert model.encoder.conv1.weight.grad is not None
+    assert model.classifier.weight.grad is not None
+    assert set(model.encoder_parameters()) == set(model.encoder.parameters())
+    assert sum(parameter.numel() for parameter in model.parameters()) > 24429380
 
 
 def test_segformer_wrapper_interpolates_official_decoder_scores():
