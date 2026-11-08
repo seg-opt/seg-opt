@@ -146,8 +146,12 @@ class TrainingConfig:
             raise ValueError("weight_decay cannot be negative")
         if not 0 <= self.warmup_fraction < 1:
             raise ValueError("warmup_fraction must be in [0, 1)")
-        if self.seed != 42:
-            raise ValueError("canonical baselines use seed 42")
+        if (
+            isinstance(self.seed, bool)
+            or not isinstance(self.seed, int)
+            or not 0 <= self.seed < 2**32
+        ):
+            raise ValueError("seed must be a non-bool integer in [0, 2**32)")
 
 
 @dataclass(frozen=True)
