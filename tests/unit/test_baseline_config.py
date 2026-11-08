@@ -182,6 +182,41 @@ def test_segformer_b4_to_fast_scnn_logit_distillation_config():
     )
 
 
+@pytest.mark.parametrize("teacher_name", ["resnet34_unet", "resnet101_unet"])
+def test_cnn_teacher_to_fast_scnn_logit_distillation_config(teacher_name: str) -> None:
+    config = load_config(
+        f"experiments/logit_distillation/fast_scnn_from_{teacher_name}.yaml"
+    )
+    baseline = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+    teacher = load_config(f"experiments/baselines_benchmark/{teacher_name}.yaml")
+
+    assert config.model == baseline.model
+    assert config.data == baseline.data == teacher.data
+    assert config.loss == baseline.loss == teacher.loss
+    assert config.metrics == baseline.metrics == teacher.metrics
+    assert replace(
+        config.training, output_dir=baseline.training.output_dir
+    ) == baseline.training
+    assert Path(config.training.output_dir).parts[-3:] == (
+        "logit_distillation",
+        f"fast_scnn_from_{teacher_name}",
+        "seed42",
+    )
+    assert config.distillation is not None
+    assert config.distillation.method == "vanilla"
+    assert config.distillation.spatial_stride == 8
+    assert config.distillation.vanilla_weight == 1.0
+    assert config.distillation.vanilla_temperature == 1.0
+    assert teacher.model.name == teacher_name
+    assert teacher.distillation is None
+    assert Path(config.distillation.teacher.config_path) == (
+        Path(f"experiments/baselines_benchmark/{teacher_name}.yaml").resolve()
+    )
+    assert Path(config.distillation.teacher.checkpoint_path) == (
+        Path(teacher.training.output_dir) / "checkpoints" / "best.ckpt"
+    )
+
+
 def test_segformer_b4_to_b0_logit_distillation_config():
     config = load_config(
         "experiments/logit_distillation/segformer_b0_from_segformer_b4.yaml"

@@ -138,3 +138,32 @@ rather than fixed legacy smoke directories. Legacy submitters delegate to
 managed `submit`; inspect its printed workflow directory and `status` for
 job IDs instead of relying on the former two-job output format. Prefer
 `pipeline` when KD requires the validation gate.
+
+## Controlled CNN Vanilla Protocol
+
+The historical CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
+Fast-SCNN using vanilla logit KD:
+
+| Teacher | Config relative to experiments/ |
+| --- | --- |
+| ResNet34-U-Net | logit_distillation/fast_scnn_from_resnet34_unet.yaml |
+| ResNet101-U-Net | logit_distillation/fast_scnn_from_resnet101_unet.yaml |
+
+Both preserve the supervised Fast-SCNN model, clean masks, aligned seed-42
+split, 512 x 768 images, augmentation, CE 1.0 + Dice 0.5 task loss, and
+kernel-7 trimap metrics. Historical training uses 20 epochs, physical batch
+16, accumulation 1, learning rate 5e-4, weight decay 0.05, warmup fraction
+0.05, bf16 precision, and seed 42. KD uses temperature 1, weight 1, and a
+stride-8 loss grid; this grid is not the student's output resolution.
+Teacher config/checkpoint references and student output directories are
+distinct for each teacher. Only student weights are needed at inference.
+
+Use the shared `pipeline` interface with completed, hash-verified supervised
+student and teacher artifacts. Its validation mIoU and small-rock IoU gate
+must pass before KD; test scores are reporting only. Student seed overrides
+43 and 44 leave the split and seed-42 teacher fixed. Batch 8 with accumulation
+2 is not BatchNorm-equivalent to physical batch 16, so SegFormer runs using
+that setting are not controlled CNN loss comparisons. These checked-in
+20-epoch configs describe historical experiments, not a new full-run budget.
+Future full runs target 100 epochs with matched supervised controls under a
+separate validation-based protocol; none are submitted by this packaging task.
