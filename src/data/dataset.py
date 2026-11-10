@@ -38,7 +38,17 @@ Pair = tuple[Path, Path]
 PairedTransform = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
 MaskVariant = Literal["ground", "clean"]
 MASK_VARIANTS = ("ground", "clean")
+DatasetName = Literal["lunar", "cityscapes", "ade20k"]
 _FRAME_ID_PATTERN = re.compile(r"\d{4}")
+# Cityscapes and ADE20K manifests list sample paths relative to the image root.
+_SAMPLE_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*")
+# Official labelId -> trainId mapping for the 19 Cityscapes evaluation classes.
+_CITYSCAPES_TRAIN_IDS = np.full(256, 255, dtype=np.int64)
+for _label_id, _train_id in {
+    7: 0, 8: 1, 11: 2, 12: 3, 13: 4, 17: 5, 19: 6, 20: 7, 21: 8, 22: 9,
+    23: 10, 24: 11, 25: 12, 26: 13, 27: 14, 28: 15, 31: 16, 32: 17, 33: 18,
+}.items():
+    _CITYSCAPES_TRAIN_IDS[_label_id] = _train_id
 
 
 def _frame_id(path: Path) -> str:
@@ -108,10 +118,14 @@ def split_pairs(
     return train, validation, test
 
 
-def _validate_manifest_ids(split_name: str, values: Any) -> tuple[str, ...]:
+def _validate_manifest_ids(
+    split_name: str,
+    values: Any,
+    pattern: re.Pattern[str] = _FRAME_ID_PATTERN,
+) -> tuple[str, ...]:
     if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
         raise ValueError(f"manifest split {split_name!r} must be a list of frame IDs")
-    invalid = [value for value in values if _FRAME_ID_PATTERN.fullmatch(value) is None]
+    invalid = [value for value in values if pattern.fullmatch(value) is None]
     if invalid:
         raise ValueError(
             f"manifest split {split_name!r} contains invalid frame IDs: {invalid[:3]}"
@@ -140,6 +154,7 @@ class SplitManifest:
     train_ids: tuple[str, ...]
     validation_ids: tuple[str, ...]
     test_ids: tuple[str, ...]
+    dataset: DatasetName = "lunar"
 
     @property
     def val_ids(self) -> tuple[str, ...]:
@@ -212,6 +227,37 @@ def _validate_manifest_against_dataset(
         )
 
 
+def _benchmark_pair(dataset: DatasetName, dataset_root: Path, sample_id: str) -> Pair:
+    if dataset == "cityscapes":
+        return (
+            dataset_root / "leftImg8bit" / f"{sample_id}_leftImg8bit.png",
+            dataset_root / "gtFine" / f"{sample_id}_gtFine_labelIds.png",
+        )
+    if dataset == "ade20k":
+        root = dataset_root / "ADEChallengeData2016"
+        return (
+            root / "images" / f"{sample_id}.jpg",
+            root / "annotations" / f"{sample_id}.png",
+        )
+    raise ValueError(f"{dataset!r} is not a benchmark dataset")
+
+
+def _validate_benchmark_manifest(manifest: SplitManifest, dataset_root: Path) -> None:
+    missing = [
+        sample_id
+        for sample_id in manifest.all_ids
+        if not all(
+            path.is_file()
+            for path in _benchmark_pair(manifest.dataset, dataset_root, sample_id)
+        )
+    ]
+    if missing:
+        raise ValueError(
+            f"split manifest references {len(missing)} samples missing from the dataset: "
+            f"{missing[:5]}"
+        )
+
+
 def load_split_manifest(
     path: str | Path = DEFAULT_SPLIT_MANIFEST,
     dataset_root: str | Path | None = None,
@@ -235,12 +281,19 @@ def load_split_manifest(
     if not isinstance(payload.get("seed"), int):
         raise ValueError("manifest seed must be an integer")
 
+    # Lunar manifests use "dataset" as a free-form name; only the benchmark
+    # names select a different loader.
+    dataset = payload.get("dataset")
+    if dataset not in {"cityscapes", "ade20k"}:
+        dataset = "lunar"
+    pattern = _FRAME_ID_PATTERN if dataset == "lunar" else _SAMPLE_ID_PATTERN
+
     splits = payload.get("splits")
     if not isinstance(splits, dict):
         raise ValueError("manifest must contain a splits object")
-    train_ids = _validate_manifest_ids("train", splits.get("train"))
-    validation_ids = _validate_manifest_ids("validation", splits.get("validation"))
-    test_ids = _validate_manifest_ids("test", splits.get("test"))
+    train_ids = _validate_manifest_ids("train", splits.get("train"), pattern)
+    validation_ids = _validate_manifest_ids("validation", splits.get("validation"), pattern)
+    test_ids = _validate_manifest_ids("test", splits.get("test"), pattern)
 
     train_set = set(train_ids)
     validation_set = set(validation_ids)
@@ -261,6 +314,7 @@ def load_split_manifest(
         train_ids=train_ids,
         validation_ids=validation_ids,
         test_ids=test_ids,
+        dataset=dataset,
     )
 
     declared_counts = payload.get("counts")
@@ -270,7 +324,10 @@ def load_split_manifest(
             f"!= {manifest.counts!r}"
         )
     if dataset_root is not None:
-        _validate_manifest_against_dataset(manifest, Path(dataset_root))
+        if dataset == "lunar":
+            _validate_manifest_against_dataset(manifest, Path(dataset_root))
+        else:
+            _validate_benchmark_manifest(manifest, Path(dataset_root))
     return manifest
 
 
@@ -296,6 +353,34 @@ def _decode_pair(pair: Pair) -> tuple[np.ndarray, np.ndarray]:
     return image, _mask_from_ground(ground)
 
 
+def _decode_cityscapes_pair(pair: Pair) -> tuple[np.ndarray, np.ndarray]:
+    image_path, mask_path = pair
+    with Image.open(image_path) as image_file:
+        image = np.asarray(image_file.convert("RGB"))
+    with Image.open(mask_path) as mask_file:
+        label_ids = np.asarray(mask_file)
+    return image, _CITYSCAPES_TRAIN_IDS[label_ids]
+
+
+def _decode_ade20k_pair(pair: Pair) -> tuple[np.ndarray, np.ndarray]:
+    """Shift ADE20K labels 1..150 to 0..149 and ignore the unlabelled class 0."""
+    image_path, mask_path = pair
+    with Image.open(image_path) as image_file:
+        image = np.asarray(image_file.convert("RGB"))
+    with Image.open(mask_path) as mask_file:
+        raw = np.asarray(mask_file).astype(np.int64)
+    labels = raw - 1
+    labels[raw == 0] = 255
+    return image, labels
+
+
+_PAIR_DECODERS: dict[str, Callable[[Pair], tuple[np.ndarray, np.ndarray]]] = {
+    "lunar": _decode_pair,
+    "cityscapes": _decode_cityscapes_pair,
+    "ade20k": _decode_ade20k_pair,
+}
+
+
 class LunarDataset(Dataset):
     def __init__(
         self,
@@ -306,8 +391,10 @@ class LunarDataset(Dataset):
         *,
         split_name: str | None = None,
         split_manifest: SplitManifest | None = None,
+        decode_pair: Callable[[Pair], tuple[np.ndarray, np.ndarray]] = _decode_pair,
     ) -> None:
         self.pairs = list(pairs)
+        self.decode_pair = decode_pair
         self.processor = processor
         self.transform = transform
         self.processor_kwargs = dict(processor_kwargs or {})
@@ -336,7 +423,7 @@ class LunarDataset(Dataset):
         """Decode and preprocess one batch per worker rather than per item."""
         decoded: list[tuple[np.ndarray, np.ndarray]] = []
         for index in indices:
-            image, mask = _decode_pair(self.pairs[index])
+            image, mask = self.decode_pair(self.pairs[index])
             if self.transform is not None:
                 image, mask = self.transform(image, mask)
             decoded.append((image, mask))
@@ -382,6 +469,7 @@ def load_datasets(
     max_train_samples: int | None = None,
     max_val_samples: int | None = None,
     max_test_samples: int | None = None,
+    dataset: DatasetName = "lunar",
 ) -> tuple[LunarDataset, LunarDataset, LunarDataset]:
     """Build canonical datasets from explicit manifest membership."""
     if mask_variant not in MASK_VARIANTS:
@@ -389,12 +477,23 @@ def load_datasets(
             f"mask_variant must be one of {list(MASK_VARIANTS)}, got {mask_variant!r}"
         )
     dataset_root = Path(dataset_root)
+    manifest_dataset = load_split_manifest(split_manifest).dataset
+    if manifest_dataset != dataset:
+        raise ValueError(
+            f"split manifest is for {manifest_dataset!r}, but the config uses {dataset!r}"
+        )
     manifest = load_split_manifest(split_manifest, dataset_root=dataset_root)
-    pairs = find_pairs(
-        dataset_root / "images" / "render",
-        dataset_root / "images" / mask_variant,
-    )
-    indexed_pairs = {_frame_id(pair[0]): pair for pair in pairs}
+    if dataset == "lunar":
+        pairs = find_pairs(
+            dataset_root / "images" / "render",
+            dataset_root / "images" / mask_variant,
+        )
+        indexed_pairs = {_frame_id(pair[0]): pair for pair in pairs}
+    else:
+        indexed_pairs = {
+            sample_id: _benchmark_pair(dataset, dataset_root, sample_id)
+            for sample_id in manifest.all_ids
+        }
 
     def make_dataset(
         split_name: str,
@@ -409,6 +508,7 @@ def load_datasets(
             processor_kwargs,
             split_name=split_name,
             split_manifest=manifest,
+            decode_pair=_PAIR_DECODERS[dataset],
         )
 
     return (
