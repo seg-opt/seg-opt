@@ -182,6 +182,80 @@ def test_segformer_b4_to_fast_scnn_logit_distillation_config():
     )
 
 
+@pytest.mark.parametrize("teacher_name", ["resnet34_unet", "resnet101_unet"])
+def test_cnn_teacher_to_fast_scnn_logit_distillation_config(teacher_name: str) -> None:
+    config = load_config(
+        f"experiments/logit_distillation/fast_scnn_from_{teacher_name}.yaml"
+    )
+    baseline = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+    teacher = load_config(f"experiments/baselines_benchmark/{teacher_name}.yaml")
+
+    assert config.model == baseline.model
+    assert config.data == baseline.data == teacher.data
+    assert config.loss == baseline.loss == teacher.loss
+    assert config.metrics == baseline.metrics == teacher.metrics
+    assert replace(
+        config.training, output_dir=baseline.training.output_dir
+    ) == baseline.training
+    assert Path(config.training.output_dir).parts[-3:] == (
+        "logit_distillation",
+        f"fast_scnn_from_{teacher_name}",
+        "seed42",
+    )
+    assert config.distillation is not None
+    assert config.distillation.method == "vanilla"
+    assert config.distillation.spatial_stride == 8
+    assert config.distillation.vanilla_weight == 1.0
+    assert config.distillation.vanilla_temperature == 1.0
+    assert teacher.model.name == teacher_name
+    assert teacher.distillation is None
+    assert Path(config.distillation.teacher.config_path) == (
+        Path(f"experiments/baselines_benchmark/{teacher_name}.yaml").resolve()
+    )
+    assert Path(config.distillation.teacher.checkpoint_path) == (
+        Path(teacher.training.output_dir) / "checkpoints" / "best.ckpt"
+    )
+
+
+@pytest.mark.parametrize(
+    ("variant", "body_weight", "edge_weight"),
+    [("body_only", 20.0, 0.0), ("edge_only", 0.0, 50.0), ("bpkd_w7", 20.0, 50.0)],
+)
+def test_resnet34_bpkd_configs_match_vanilla_protocol(
+    variant: str, body_weight: float, edge_weight: float
+) -> None:
+    config = load_config(
+        f"experiments/bpkd/fast_scnn_from_resnet34_unet_{variant}.yaml"
+    )
+    vanilla = load_config(
+        "experiments/logit_distillation/fast_scnn_from_resnet34_unet.yaml"
+    )
+
+    assert config.model == vanilla.model
+    assert config.data == vanilla.data
+    assert config.loss == vanilla.loss
+    assert config.metrics == vanilla.metrics
+    assert replace(
+        config.training, output_dir=vanilla.training.output_dir
+    ) == vanilla.training
+    assert Path(config.training.output_dir).parts[-4:] == (
+        "bpkd", "fast_scnn_from_resnet34_unet", variant, "seed42"
+    )
+    assert config.distillation is not None
+    assert vanilla.distillation is not None
+    assert config.distillation.teacher == vanilla.distillation.teacher
+    assert config.distillation.method == "bpkd"
+    assert config.distillation.spatial_stride == vanilla.distillation.spatial_stride
+    assert config.distillation.body_weight == body_weight
+    assert config.distillation.edge_weight == edge_weight
+    assert config.distillation.body_temperature == 1.0
+    assert config.distillation.edge_temperature == 1.0
+    assert config.distillation.edge_alpha == 2.0
+    assert config.distillation.edge_kernel_size == 7
+    assert config.distillation.prm
+    assert config.distillation.pom
+
+
 def test_segformer_b4_to_b0_logit_distillation_config():
     config = load_config(
         "experiments/logit_distillation/segformer_b0_from_segformer_b4.yaml"
@@ -247,10 +321,10 @@ def test_segformer_b4_to_b0_stride4_vanilla_kd_sweep(
     assert Path(config.distillation.teacher.config_path).name == "segformer_b4.yaml"
 
 
-def test_checked_in_bpkd_configs_are_clean_and_match_the_declared_matrix():
+def test_mask2former_bpkd_configs_are_clean_and_match_the_declared_matrix():
     configs = [
         load_config(path)
-        for path in sorted(Path("experiments/bpkd").glob("*.yaml"))
+        for path in sorted(Path("experiments/bpkd").glob("*_clean.yaml"))
     ]
 
     assert len(configs) == 11
