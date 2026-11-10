@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# One-batch, H100 dependency and pipeline check for SegFormer-B4 logit KD.
+# One-batch, H100 dependency and pipeline check for the supplied configs.
 # The full training submission is gated on this job with afterok.
-#SBATCH --job-name=segformer-b4-kd-smoke
+#SBATCH --job-name=seg-experiment-smoke
 #SBATCH --account=pl1200-01
 #SBATCH --partition=proxima
 #SBATCH --constraint=h100
@@ -14,12 +14,11 @@
 
 set -euo pipefail
 
-export WANDB_MODE="offline"
+export REPO_PATH="${REPO_PATH:-${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+cd -- "$REPO_PATH"
 
-exec bash scripts/train.sbatch \
-    python -m scripts.train \
-    --config experiments/logit_distillation/fast_scnn_from_segformer_b4.yaml \
-    --output-dir results/logit_distillation/smoke/segformer_b4_to_fast_scnn/seed42 \
-    --devices 1 \
-    --fast-dev-run \
-    --offline
+if (( $# == 0 )); then
+	set -- experiments/logit_distillation/fast_scnn_from_segformer_b4.yaml
+fi
+
+exec python3 -S scripts/experiment.py launch --smoke "$@"
