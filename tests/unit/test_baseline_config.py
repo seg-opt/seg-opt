@@ -111,6 +111,44 @@ def test_resnet101_teacher_preserves_resnet34_training_protocol():
     assert larger.training.output_dir != previous.training.output_dir
 
 
+def test_cnn_100_epoch_configs_preserve_history_and_match_student_protocol():
+    root = Path("experiments/cnn_distillation_100e")
+    baseline = load_config(root / "fast_scnn.yaml")
+    teacher = load_config(root / "resnet101_unet.yaml")
+    student = load_config(root / "fast_scnn_from_resnet101_unet.yaml")
+    historical_paths = (
+        "experiments/baselines_benchmark/fast_scnn.yaml",
+        "experiments/baselines_benchmark/resnet101_unet.yaml",
+        "experiments/logit_distillation/fast_scnn_from_resnet101_unet.yaml",
+    )
+    for current, historical_path in zip((baseline, teacher, student), historical_paths):
+        historical = load_config(historical_path)
+        assert historical.training.epochs == 20
+        assert current.training.epochs == 100
+        assert current.training.output_dir != historical.training.output_dir
+        assert current.model == historical.model
+        assert current.data == historical.data
+        assert current.loss == historical.loss
+        assert current.metrics == historical.metrics
+        assert replace(
+            current.training,
+            output_dir=historical.training.output_dir,
+            epochs=historical.training.epochs,
+        ) == historical.training
+    assert baseline.distillation is None
+    assert teacher.distillation is None
+    assert replace(student.training, output_dir=baseline.training.output_dir) == baseline.training
+    assert student.distillation is not None
+    historical_student = load_config(historical_paths[2])
+    assert replace(
+        student.distillation, teacher=historical_student.distillation.teacher
+    ) == historical_student.distillation
+    assert Path(student.distillation.teacher.config_path) == (root / "resnet101_unet.yaml").resolve()
+    assert Path(student.distillation.teacher.checkpoint_path) == (
+        Path(teacher.training.output_dir) / "checkpoints" / "best.ckpt"
+    )
+
+
 def test_distillation_configuration_is_validated_and_round_trips(tmp_path):
     config_path = tmp_path / "bpkd.yaml"
     config_path.write_text(
