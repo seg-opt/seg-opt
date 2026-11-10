@@ -5,7 +5,7 @@ from src.models.dinov3_mask2former import (
     DINOv3PyramidBackbone,
 )
 from src.models.fast_scnn import FastSCNN
-from src.models.resnet_unet import ResNet34UNet
+from src.models.resnet_unet import ResNet34UNet, ResNet101UNet
 from src.models.segmentation import (
     DINOv3Segmenter,
     Mask2FormerSegmenter,
@@ -17,6 +17,7 @@ from src.models.segmentation import (
 BASELINE_MODEL_NAMES = (
     "fast_scnn",
     "resnet34_unet",
+    "resnet101_unet",
     "segformer_b0",
     "segformer_b2",
     "segformer_b4",
@@ -72,6 +73,17 @@ def load_resnet34_unet(
     weights = models.ResNet34_Weights.DEFAULT if pretrained else None
     encoder = models.resnet34(weights=weights)
     return ResNet34UNet(encoder, class_names)
+
+
+def load_resnet101_unet(
+    class_names: Sequence[str],
+    pretrained: bool = True,
+) -> ResNet101UNet:
+    from torchvision import models
+
+    weights = models.ResNet101_Weights.DEFAULT if pretrained else None
+    encoder = models.resnet101(weights=weights)
+    return ResNet101UNet(encoder, class_names)
 
 
 def load_segformer(
@@ -206,6 +218,8 @@ def load_model(
         return FastSCNN(len(names), class_names=names)
     if model_name == "resnet34_unet":
         return load_resnet34_unet(names, pretrained=use_pretrained)
+    if model_name == "resnet101_unet":
+        return load_resnet101_unet(names, pretrained=use_pretrained)
     if model_name in {"segformer_b0", "segformer_b2", "segformer_b4"}:
         return load_segformer(
             model_id or DEFAULT_MODEL_IDS[model_name],
