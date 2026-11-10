@@ -67,6 +67,7 @@ def build_baseline(
         max_train_samples=sample_limits[0],
         max_val_samples=sample_limits[1],
         max_test_samples=sample_limits[2],
+        dataset=config.data.dataset,
     )
     manifest = train_dataset.split_manifest
     if manifest is None:

@@ -25,6 +25,7 @@ BASELINE_NAMES = {
     "mask2former_swinl",
 }
 CLASS_NAMES = ("background", "sky", "small_rock", "large_rock")
+BENCHMARK_CLASS_COUNTS = {"cityscapes": 19, "ade20k": 150}
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -82,10 +83,20 @@ class DataConfig:
     num_workers: int = 8
     mask_variant: Literal["ground", "clean"] = "ground"
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
+    dataset: Literal["lunar", "cityscapes", "ade20k"] = "lunar"
 
     def __post_init__(self) -> None:
-        if tuple(self.class_names) != CLASS_NAMES:
-            raise ValueError(f"class_names must be ordered as {list(CLASS_NAMES)}")
+        if self.dataset == "lunar":
+            if tuple(self.class_names) != CLASS_NAMES:
+                raise ValueError(f"class_names must be ordered as {list(CLASS_NAMES)}")
+        elif self.dataset in BENCHMARK_CLASS_COUNTS:
+            expected = BENCHMARK_CLASS_COUNTS[self.dataset]
+            if len(self.class_names) != expected:
+                raise ValueError(f"{self.dataset} requires {expected} class_names")
+            if len(set(self.class_names)) != len(self.class_names):
+                raise ValueError("class_names must be unique")
+        else:
+            raise ValueError("dataset must be 'lunar', 'cityscapes' or 'ade20k'")
         if self.image_height <= 0 or self.image_width <= 0:
             raise ValueError("image dimensions must be positive")
         if self.image_height % 32 or self.image_width % 32:
@@ -138,8 +149,8 @@ class TrainingConfig:
             raise ValueError("weight_decay cannot be negative")
         if not 0 <= self.warmup_fraction < 1:
             raise ValueError("warmup_fraction must be in [0, 1)")
-        if self.seed != 42:
-            raise ValueError("canonical baselines use seed 42")
+        if self.seed < 0:
+            raise ValueError("seed cannot be negative")
 
 
 @dataclass(frozen=True)
@@ -373,6 +384,7 @@ def load_config(path: str | Path) -> BaselineConfig:
             "num_workers",
             "mask_variant",
             "augmentation",
+            "dataset",
         },
         "data",
     )
