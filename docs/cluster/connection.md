@@ -15,12 +15,12 @@ ssh -i <private_key> <username>@eagle.man.poznan.pl
 
 ## Using the helper script
 
-Instead of running `ssh` by hand, use [`scripts/connect.sh`](../scripts/connect.sh):
+Instead of running `ssh` by hand, use [`scripts/connect_to_cluster.sh`](../../scripts/connect_to_cluster.sh):
 
 ```bash
-bash scripts/connect.sh
+bash scripts/connect_to_cluster.sh
 ```
 
 It reads `SSH_KEY`, `USERNAME`, and `CLUSTER_ADDRESS` from `.env.test` (see
-[`.env.example`](../.env.example) for the format), writes the key to a
+[`.env.example`](../../.env.example) for the format), writes the key to a
 temporary `0600` file, opens the SSH session, and removes the temp key on exit.

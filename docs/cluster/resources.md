@@ -94,7 +94,7 @@ Versioned SIF images live under:
 ```
 
 Do not keep container images or caches directly in the approximately 1 GB home
-directory. Follow [the container runbook](containers.md) for one-time storage
+directory. Follow [the container runbook](../development/containers.md) for one-time storage
 setup, deployment, CPU/GPU templates, and rollback.
 
 ## Which grant to use
@@ -117,4 +117,4 @@ sshare -A pl1200-01                                           # usage/share for 
 sinfo                                                          # partitions and node states
 ```
 
-> Sources for this page are listed in [`docs/resources.md`](resources.md).
+> Sources for this page are listed in [`sources.md`](sources.md).
