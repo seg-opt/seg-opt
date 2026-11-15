@@ -80,6 +80,7 @@ def test_baseline_dispatch_is_limited_to_the_supported_benchmark_models():
         "fast_scnn",
         "resnet34_unet",
         "segformer_b0",
+        "segformer_b1",
         "segformer_b2",
         "segformer_b4",
         "dinov3_vitl16",

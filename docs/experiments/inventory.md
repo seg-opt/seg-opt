@@ -1,12 +1,16 @@
-# Teacher, student, and distillation experiment inventory
-
-Inventory reviewed on 15 November 2026 using the current
-`feat/sard-benchmark-datasets` branch, other locally available Git branches,
-experiment configurations, and copied SLURM logs. Configured experiments and
-verified executions are listed separately: a configuration does not establish
-that a run was submitted or completed.
-
-## Teachers and students
+| Inventory scope | Details |
+|---|---|
+| Results checked | 15 November 2026 through read-only HPC access |
+| Numeric results | Taken from saved `metrics.json`; full-run rows have `run_kind: full`, validation/test metrics, and an existing best checkpoint |
+| Units | All IoU values are percentages, rounded to two decimals; epoch budget is the configured maximum, not the selected checkpoint epoch |
+| Dataset shorthand | Lunar means Artificial Lunar Landscape with clean masks |
+| Boundary diagnostic | Trimap small-rock IoU uses the recorded boundary metric; → means unavailable or not applicable |
+| Missing results | Not located in accessible storage; this does not establish that training never happened |
+| Access limits | The teammate HPC directory is inaccessible; W&B cloud history was not queried |
+| Duplicate handling | Five shared SARD copies and the repeated lunar seed-42 Fast-SCNN baseline are excluded from the result tables; matching metrics were checked, checkpoint hashes were not compared |
+| Comparisons | Compare matched datasets, splits, seed, and training setup; the 20-epoch and 100-epoch CNN campaigns are separate studies |
+| Evidence labels | SARD lunar/benchmark identifies the SARD workspace; CNN 20e canonical identifies its original runs; timestamped IDs identify individual CNN runner experiments |
+| Table order | Model roles; methods; verified supervised results; verified distillation results; unavailable configured results; smoke checks; configuration references |
 
 | Model | Teacher role | Student role |
 |---|---|---|
@@ -18,12 +22,6 @@ that a run was submitted or completed.
 | DINOv3 ViT-L/16 | Baseline teacher candidate; frozen backbone with linear segmentation head | — |
 | Fast-SCNN | — | Main lightweight student |
 
-There are six teacher candidates and three student architectures. Only
-SegFormer-B4 and Mask2Former Swin-L are referenced as teachers by the
-distillation configurations. See the [baseline benchmark](../../experiments/baselines_benchmark/README.md).
-
-## Distillation methods
-
 | Method | Variants present |
 |---|---|
 | Vanilla pixel/logit KD | Temperature-scaled pixelwise KL divergence |
@@ -31,74 +29,95 @@ distillation configurations. See the [baseline benchmark](../../experiments/base
 | SARD — Structure-Aware Representation Distillation | Full structure weighting; uniform-weight control |
 | CAP — Cross-Attention Projector feature distillation | ScaleKD-derived feature loss added to vanilla logit KD |
 
-Vanilla KD, BPKD, and SARD are implemented on the reviewed current branch.
-CAP is available on `origin/feat/scalekd` at commit `be8d374` and is an
-additional feature loss rather than a separate `distillation.method` value.
-Task-only/no-KD experiments are supervised controls.
+| Model / teacher → student | Method | Dataset | Seed | Epoch budget | Val mIoU (%) | Test mIoU (%) | Test small-rock IoU (%) | Test Trimap small-rock IoU (%) | Evidence |
+|---|---|---|---|---|---|---|---|---|---|
+| Fast-SCNN | Supervised / no KD | ADE20K | 42 | 20 | 12.30 | 12.62 | — | — | SARD benchmark |
+| SegFormer-B4 | Supervised / no KD | ADE20K | 42 | 20 | 45.63 | 45.78 | — | — | SARD benchmark |
+| Fast-SCNN | Supervised / no KD | Cityscapes | 42 | 50 | 49.09 | 48.12 | — | — | SARD benchmark |
+| SegFormer-B4 | Supervised / no KD | Cityscapes | 42 | 50 | 75.42 | 76.08 | — | — | SARD benchmark |
+| Fast-SCNN | Supervised / no KD | Lunar | 42 | 20 | 82.61 | 83.31 | 66.36 | 47.06 | SARD lunar |
+| Fast-SCNN | Supervised / no KD | Lunar | 43 | 20 | 82.11 | 82.66 | 64.59 | 45.60 | CNN 20e `20261027T173808Z-a496f8c0bcd7` |
+| Fast-SCNN | Supervised / no KD | Lunar | 44 | 20 | 82.53 | 83.04 | 65.52 | 46.46 | CNN 20e `20261027T173841Z-d7f305b45c82` |
+| ResNet101–U-Net | Supervised / no KD | Lunar | 42 | 20 | 88.87 | 89.37 | 76.97 | 60.87 | CNN 20e canonical |
+| ResNet34–U-Net | Supervised / no KD | Lunar | 42 | 20 | 88.39 | 88.88 | 76.19 | 59.48 | CNN 20e canonical |
+| SegFormer-B4 | Supervised / no KD | Lunar | 42 | 20 | 90.13 | 90.35 | 78.85 | 61.39 | SARD lunar |
+| Fast-SCNN | Supervised / no KD | Lunar | 42 | 100 | 85.80 | 86.35 | 72.20 | 54.64 | CNN 100e `20261108T234227Z-2ee5c84aba50` |
+| Fast-SCNN | Supervised / no KD | Lunar | 43 | 100 | 85.44 | 86.23 | 72.43 | 54.59 | CNN 100e `20261108T234307Z-9689d6b4a405` |
+| Fast-SCNN | Supervised / no KD | Lunar | 44 | 100 | 85.73 | 86.49 | 72.47 | 54.97 | CNN 100e `20261108T234318Z-595903bc4273` |
+| ResNet101–U-Net | Supervised / no KD | Lunar | 42 | 100 | 89.26 | 89.67 | 77.25 | 60.83 | CNN 100e `20261108T234227Z-2ee5c84aba50` |
 
-## Configured teacher-to-student experiments
+| Model / teacher → student | Method | Dataset | Seed | Epoch budget | Val mIoU (%) | Test mIoU (%) | Test small-rock IoU (%) | Test Trimap small-rock IoU (%) | Evidence |
+|---|---|---|---|---|---|---|---|---|---|
+| SegFormer-B4 → Fast-SCNN | Full SARD | ADE20K | 42 | 20 | 12.95 | 13.02 | — | — | SARD benchmark |
+| SegFormer-B4 → Fast-SCNN | Full SARD | ADE20K | 43 | 20 | 12.32 | 12.75 | — | — | SARD benchmark |
+| SegFormer-B4 → Fast-SCNN | Full SARD | ADE20K | 44 | 20 | 12.68 | 12.83 | — | — | SARD benchmark |
+| SegFormer-B4 → Fast-SCNN | Full SARD | Cityscapes | 42 | 50 | 51.48 | 49.63 | — | — | SARD benchmark |
+| SegFormer-B4 → Fast-SCNN | Full SARD | Cityscapes | 43 | 50 | 51.89 | 49.70 | — | — | SARD benchmark |
+| SegFormer-B4 → Fast-SCNN | Full SARD | Cityscapes | 44 | 50 | 51.23 | 49.70 | — | — | SARD benchmark |
+| ResNet101–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 42 | 20 | 83.38 | 83.86 | 67.13 | 47.12 | CNN 20e `20261027T173725Z-83e7ac9f5077` |
+| ResNet34–U-Net → Fast-SCNN | BPKD body only, k=7 | Lunar | 42 | 20 | 79.02 | 79.29 | 60.27 | 38.86 | CNN 20e `20261027T212419Z-1127400db42c` |
+| ResNet34–U-Net → Fast-SCNN | BPKD edge only, k=7 | Lunar | 42 | 20 | 64.62 | 65.66 | 37.03 | 32.49 | CNN 20e `20261027T212432Z-de5a7543c1dc` |
+| ResNet34–U-Net → Fast-SCNN | BPKD full, k=7 | Lunar | 42 | 20 | 79.58 | 80.56 | 63.05 | 45.77 | CNN 20e `20261027T212115Z-f4351a1ed9ef` |
+| ResNet34–U-Net → Fast-SCNN | Full SARD | Lunar | 42 | 20 | 80.15 | 80.74 | 61.83 | 43.34 | CNN 20e `20261027T212100Z-6ca92fe48679` |
+| ResNet34–U-Net → Fast-SCNN | Uniform SARD | Lunar | 42 | 20 | 83.52 | 84.09 | 67.30 | 47.58 | CNN 20e `20261027T212405Z-c9ce3924034b` |
+| ResNet34–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 42 | 20 | 83.30 | 84.05 | 67.63 | 48.06 | CNN 20e canonical |
+| ResNet34–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 43 | 20 | 82.94 | 83.23 | 66.17 | 46.37 | CNN 20e `20261027T173825Z-df9d6afc3fe8` |
+| ResNet34–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 44 | 20 | 83.02 | 83.57 | 66.63 | 46.36 | CNN 20e `20261027T173850Z-f7644000adbc` |
+| SegFormer-B4 → Fast-SCNN | Full SARD | Lunar | 42 | 20 | 83.74 | 84.27 | 67.68 | 47.87 | SARD lunar |
+| SegFormer-B4 → Fast-SCNN | Full SARD | Lunar | 43 | 20 | 83.58 | 84.03 | 67.52 | 48.14 | SARD lunar |
+| SegFormer-B4 → Fast-SCNN | Full SARD | Lunar | 44 | 20 | 83.39 | 84.11 | 67.17 | 47.05 | SARD lunar |
+| SegFormer-B4 → Fast-SCNN | Uniform SARD | Lunar | 42 | 20 | 83.69 | 84.29 | 67.50 | 47.21 | SARD lunar |
+| SegFormer-B4 → Fast-SCNN | Vanilla logit KD | Lunar | 42 | 20 | 82.96 | 83.68 | 66.37 | 45.82 | SARD lunar |
+| ResNet101–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 42 | 100 | 85.64 | 86.39 | 72.07 | 52.84 | CNN 100e `20261108T234408Z-edabcc89e030` |
+| ResNet101–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 43 | 100 | 85.70 | 86.18 | 72.09 | 53.73 | CNN 100e `20261108T234458Z-458030dd42e7` |
+| ResNet101–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 44 | 100 | 85.79 | 86.28 | 72.12 | 53.22 | CNN 100e `20261108T234511Z-0732b0c0cb4d` |
 
-These are experiment definitions, not a list of confirmed completed runs.
-Lunar means Artificial Lunar Landscape with clean masks.
+| Configured model / teacher → student | Method / variant | Dataset | Seed | Val mIoU (%) | Test mIoU (%) | Result status |
+|---|---|---|---|---|---|---|
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD, stride 8 | Lunar | 42 | — | — | Not located |
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD, stride 4, weight 1, temperature 1 | Lunar | 42 | — | — | Not located |
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD, stride 4, weight 1, temperature 2 | Lunar | 42 | — | — | Not located |
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD, stride 4, weight 4, temperature 1 | Lunar | 42 | — | — | Not located |
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD, stride 4, weight 4, temperature 2 | Lunar | 42 | — | — | Not located |
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD + CAP | Lunar | 42 | — | — | Not located |
+| SegFormer-B4 → SegFormer-B0 | Vanilla KD, matched no-CAP control | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | Vanilla KD | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | BPKD body only | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | BPKD edge only | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 3 | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 5 | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 7 | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 9 | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Mask2Former Swin-L | Vanilla KD | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L → Mask2Former Swin-L | Full BPKD, kernel 7 | Lunar | 42 | — | — | Not located |
+| SegFormer-B0 | Supervised baseline | Lunar | 42 | — | — | Not located |
+| SegFormer-B2 | Supervised baseline | Lunar | 42 | — | — | Not located |
+| DINOv3 ViT-L/16 | Supervised baseline | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L | Supervised baseline | Lunar | 42 | — | — | Not located |
+| Mask2Former Swin-L | BPKD teacher/control | Lunar | 42 | — | — | Not located |
 
-| Teacher → student | Method / variants | Dataset | Seeds |
-|---|---|---|---|
-| SegFormer-B4 → Fast-SCNN | Vanilla logit KD | Lunar | 42 |
-| SegFormer-B4 → Fast-SCNN | Uniform SARD | Lunar | 42 |
-| SegFormer-B4 → Fast-SCNN | Full SARD | Lunar | 42, 43, 44 |
-| SegFormer-B4 → Fast-SCNN | Full SARD | Cityscapes | 42, 43, 44 |
-| SegFormer-B4 → Fast-SCNN | Full SARD | ADE20K | 42, 43, 44 |
-| SegFormer-B4 → SegFormer-B0 | Vanilla logit KD, stride 8 | Lunar | 42 |
-| SegFormer-B4 → SegFormer-B0 | Vanilla KD, stride 4; weight {1, 4} × temperature {1, 2} (four configurations) | Lunar | 42 |
-| SegFormer-B4 → SegFormer-B0 | Vanilla KD + CAP; matched no-CAP control | Lunar | 42 |
-| Mask2Former Swin-L → Fast-SCNN | Vanilla KD | Lunar | 42 |
-| Mask2Former Swin-L → Fast-SCNN | BPKD body only | Lunar | 42 |
-| Mask2Former Swin-L → Fast-SCNN | BPKD edge only | Lunar | 42 |
-| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernels 3/5/7/9 (four configurations) | Lunar | 42 |
-| Mask2Former Swin-L → Mask2Former Swin-L | Vanilla KD | Lunar | 42 |
-| Mask2Former Swin-L → Mask2Former Swin-L | Full BPKD, kernel 7 | Lunar | 42 |
+| Smoke check | Dataset | Val mIoU (%) | Test mIoU (%) | Status |
+|---|---|---|---|---|
+| Teacher → Fast-SCNN, job 9221665 | lunar | 0.38 | 0.47 | One-batch smoke; not a full-run result |
+| SegFormer-B4, job 9221665 | lunar | 38.22 | 43.70 | One-batch smoke; not a full-run result |
+| Teacher → Fast-SCNN, job 9435686 | ade20k | 0.00 | 0.00 | One-batch smoke; not a full-run result |
+| SegFormer-B4, job 9435686 | ade20k | 0.00 | 1.25 | One-batch smoke; not a full-run result |
+| Teacher → Fast-SCNN, job 9435686 | cityscapes | 0.00 | 0.00 | One-batch smoke; not a full-run result |
+| SegFormer-B4, job 9435686 | cityscapes | 7.80 | 6.01 | One-batch smoke; not a full-run result |
 
-Configuration sources:
-
-- [Vanilla logit KD](../../experiments/logit_distillation/)
-- [SARD and lunar controls](../../experiments/sard/README.md)
-- [Cityscapes SARD](../../experiments/sard/cityscapes/)
-- [ADE20K SARD](../../experiments/sard/ade20k/)
-- [BPKD suite and interpretation protocol](../../experiments/bpkd/README.md)
-- CAP and the stride-4 logit sweep: `origin/feat/scalekd`, commit `be8d374`,
-  under `experiments/cap/` and `experiments/logit_distillation/`.
-  These files are absent from the reviewed current branch.
-
-The current BPKD README marks its suite as deferred until the clean baseline
-benchmark establishes a positive teacher margin.
-
-## Supervised controls and teacher training
-
-| Suite | Models | Dataset | Seed |
-|---|---|---|---|
-| Baseline benchmark | Fast-SCNN, ResNet34–U-Net, SegFormer-B0/B2/B4, DINOv3 ViT-L/16, Mask2Former Swin-L | Lunar | 42 |
-| BPKD | Mask2Former Swin-L teacher/control; task-only Fast-SCNN | Lunar | 42 |
-| SARD benchmark datasets | SegFormer-B4 teacher; no-KD Fast-SCNN | Cityscapes and ADE20K | 42 |
-
-## Execution evidence available locally
-
-| Run | Evidence and status |
+| Configuration source | Location |
 |---|---|
-| SegFormer-B4 supervised smoke training | Completed in job 9221665 on 20 October 2026; one training/validation/test batch |
-| SegFormer-B4 → Fast-SCNN, full SARD smoke test | Completed in job 9221665 using the temporary smoke teacher; one training/validation/test batch |
-| SegFormer-B4 supervised full training | Started in job 9221666; the copied output ends during epoch 3, so completion is unverified |
-| Earlier lunar seed-42 work | `submit_seeds.sh` says “seed 42 already done” and submits only additional lunar seeds; no corresponding full-run results are stored locally |
+| Vanilla logit KD | [Configurations](../../experiments/logit_distillation/) |
+| SARD and lunar controls | [Experiment guide](../../experiments/sard/README.md) |
+| Cityscapes SARD | [Configurations](../../experiments/sard/cityscapes/) |
+| ADE20K SARD | [Configurations](../../experiments/sard/ade20k/) |
+| BPKD | [Suite and interpretation protocol](../../experiments/bpkd/README.md) |
+| CAP and stride-4 logit sweep | `origin/feat/scalekd`, commit `be8d374`, under `experiments/cap/` and `experiments/logit_distillation/`; absent from the reviewed branch |
 
-Evidence files:
-
-- [Smoke run log](../../slurm-sard-smoke-9221665.err): completion entries for
-  the teacher and SARD student.
-- [Full teacher training output](../../slurm-sard-teacher-segformer-b4-9221666.out)
-- [Full teacher training log](../../sard-teacher-segformer-b4-train.log)
-- [Additional-seed submission script](../../experiments/sard/submit_seeds.sh)
-
-The copied logs may be ignored by Git and unavailable in another checkout.
-At review time, `results/` contains only `.gitkeep`. No completed full
-distillation run can be independently confirmed from the local artifacts.
-A definitive completed-run inventory requires cluster result artifacts or
-experiment-tracker history.
+| Method / evidence notes | Details |
+|---|---|
+| Vanilla KD, BPKD, SARD | Available on the original reviewed branch; additional ResNet-based runs were discovered on HPC |
+| CAP | `origin/feat/scalekd`, commit `be8d374`; feature loss added to vanilla KD |
+| Mask2Former BPKD configurations | Original README marks that suite as deferred; the verified BPKD results above use a ResNet34–U-Net teacher |
+| Smoke scope | Six SARD smoke artifacts are listed; 21 additional CNN smoke artifacts were found but are excluded from full experiment comparisons |
+| Local files | The local `results/` contains only `.gitkeep`; numeric values above were read from HPC artifacts |

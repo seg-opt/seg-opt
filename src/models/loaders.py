@@ -18,6 +18,7 @@ BASELINE_MODEL_NAMES = (
     "fast_scnn",
     "resnet34_unet",
     "segformer_b0",
+    "segformer_b1",
     "segformer_b2",
     "segformer_b4",
     "dinov3_vitl16",
@@ -27,6 +28,7 @@ BASELINE_MODEL_NAMES = (
 
 DEFAULT_MODEL_IDS = {
     "segformer_b0": "nvidia/mit-b0",
+    "segformer_b1": "nvidia/mit-b1",
     "segformer_b2": "nvidia/mit-b2",
     "segformer_b4": "nvidia/mit-b4",
     "dinov3_vitl16": "facebook/dinov3-vitl16-pretrain-lvd1689m",
@@ -206,7 +208,7 @@ def load_model(
         return FastSCNN(len(names), class_names=names)
     if model_name == "resnet34_unet":
         return load_resnet34_unet(names, pretrained=use_pretrained)
-    if model_name in {"segformer_b0", "segformer_b2", "segformer_b4"}:
+    if model_name in {"segformer_b0", "segformer_b1", "segformer_b2", "segformer_b4"}:
         return load_segformer(
             model_id or DEFAULT_MODEL_IDS[model_name],
             names,
