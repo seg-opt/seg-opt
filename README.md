@@ -68,5 +68,5 @@ sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
 
 ## Documentation
 
-See the [documentation index](docs/README.md) for development, cluster guides,
-and the teacher/student experiment inventory.
+See the [experiment inventory](docs/experiments/inventory.md),
+[development guides](docs/development/), and [cluster guides](docs/cluster/).
