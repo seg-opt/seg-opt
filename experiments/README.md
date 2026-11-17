@@ -1,5 +1,23 @@
 # Experiment map
 
+## Training budget
+
+80 epochs is the default budget for active full runs, not a separate experiment
+family. Configure baselines in `baselines_benchmark/`, vanilla KD in
+`logit_distillation/`, and method variants in `bpkd/`, `sard/`, or
+`strong_teacher_distillation/`. Smoke limits are unchanged. The explicitly named
+`dinov3_mask2former/lunar_teacher_80e.yaml` remains a historical recipe, not an
+active default. Matching its epoch budget alone does not authorize checkpoint
+reuse: verify the full protocol and artifacts first (see
+[strong-teacher guidance](strong_teacher_distillation/README.md)).
+
+Historical results keep their actual epoch budgets. Their immutable source
+snapshots and resolved artifact configs preserve the original protocol;
+updating canonical YAML defaults must not rewrite those records. Do not mix
+budgets in controlled comparisons or reuse unmatched teacher/control artifacts.
+Use the managed runner's unique outputs, not direct training into historical
+standalone output directories.
+
 ## Clean baseline benchmark
 
 [`baselines_benchmark/`](baselines_benchmark/) compares the Fast-SCNN student
@@ -141,7 +159,7 @@ job IDs instead of relying on the former two-job output format. Prefer
 
 ## Controlled CNN Vanilla Protocol
 
-The historical CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
+The canonical CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
 Fast-SCNN using vanilla logit KD:
 
 | Teacher | Config relative to experiments/ |
@@ -151,7 +169,7 @@ Fast-SCNN using vanilla logit KD:
 
 Both preserve the supervised Fast-SCNN model, clean masks, aligned seed-42
 split, 512 x 768 images, augmentation, CE 1.0 + Dice 0.5 task loss, and
-kernel-7 trimap metrics. Historical training uses 20 epochs, physical batch
+kernel-7 trimap metrics. Full training uses 80 epochs, physical batch
 16, accumulation 1, learning rate 5e-4, weight decay 0.05, warmup fraction
 0.05, bf16 precision, and seed 42. KD uses temperature 1, weight 1, and a
 stride-8 loss grid; this grid is not the student's output resolution.
@@ -163,17 +181,17 @@ student and teacher artifacts. Its validation mIoU and small-rock IoU gate
 must pass before KD; test scores are reporting only. Student seed overrides
 43 and 44 leave the split and seed-42 teacher fixed. Batch 8 with accumulation
 2 is not BatchNorm-equivalent to physical batch 16, so SegFormer runs using
-that setting are not controlled CNN loss comparisons. These checked-in
-20-epoch configs describe historical experiments, not a new full-run budget.
-Future full runs target 100 epochs with matched supervised controls under a
-separate validation-based protocol; none are submitted by this packaging task.
+that setting are not controlled CNN loss comparisons. The historical results
+below used 20 epochs; current canonical YAMLs use 80. Compare only matched
+training budgets and preserve the original resolved configs on HPC.
 
 ## Controlled CNN BPKD/SARD Pilot Protocol
 
 The five historical seed-42 ablations reuse the same ResNet34 teacher and
-Fast-SCNN supervised/vanilla references. All preserve the CNN data, task
-loss, metrics, and 20-epoch physical-batch-16/accumulation-1 training protocol
-above; only the distillation method/settings and output routing differ.
+Fast-SCNN supervised/vanilla references. Their completed runs preserved the CNN
+data, task loss, metrics, and a 20-epoch physical-batch-16/accumulation-1 training
+protocol; only distillation settings and output routing differed. The canonical
+configs now use the standard 80-epoch budget with matched controls.
 
 | Variant | Config relative to experiments/ |
 | --- | --- |
@@ -247,5 +265,96 @@ settings regress on validation as well as test. Large logged scalar KD/task
 ratios motivate validation-based normalization/weight checks, not a causal
 claim about gradients or a general failure claim about either method.
 No additional training, hyperparameter calibration, or sweep was performed
-during reporting. Any future 100-epoch study needs matched controls and a
+during historical reporting. Additional studies need matched controls and a
 protocol fixed using validation before viewing new test outcomes.
+
+## Completed ResNet101 CNN Campaign
+
+This historical campaign predates the 80-epoch norm adopted on 2026-11-17.
+It used the Fast-SCNN baseline, ResNet101-U-Net teacher, and vanilla KD protocol
+with 100 epochs for every full run; these records retain their actual budget.
+Student training seeds are 42/43/44; all share one seed-42 teacher and the fixed
+seed-42 data split. The teacher used batch 8 with accumulation 2, LR 3e-4 and
+backbone LR 3e-5; students used physical batch 16 and LR 5e-4. Vanilla KD retained
+weight 1, temperature 1 and spatial stride 8; warmup fraction remained 0.05.
+Checkpoint selection used validation mIoU, not test scores.
+
+| Model | Validation mIoU (%) | Test mIoU (%) | Test small-rock IoU (%) |
+| --- | ---: | ---: | ---: |
+| ResNet101 teacher, seed 42 | 89.255774 | 89.671141 | 77.254838 |
+| Supervised Fast-SCNN, seed 42 | 85.804051 | 86.345065 | 72.204095 |
+| Supervised Fast-SCNN, seed 43 | 85.440838 | 86.233538 | 72.430390 |
+| Supervised Fast-SCNN, seed 44 | 85.725331 | 86.485678 | 72.465074 |
+| Vanilla KD, seed 42 | 85.644251 | 86.387557 | 72.071993 |
+| Vanilla KD, seed 43 | 85.696727 | 86.184657 | 72.090346 |
+| Vanilla KD, seed 44 | 85.788363 | 86.279631 | 72.117674 |
+
+Mean paired KD-minus-baseline test mIoU is -0.070812 pp; mean validation change
+is +0.053040 pp. The teacher has a real advantage, but this recipe does not
+consistently transfer it. Three seeds do not establish method-wide failure.
+Do not use these held-out test scores to select future temperatures or weights.
+
+The immutable campaign remains on Eagle under
+`/mnt/storage_6/project_data/pl1200-01/issue-15-cnn-kd/campaign-100e-20261109/`.
+That historical storage name and its recorded source/config hashes do not
+require a separate experiment family in the current repository. Preserve all
+manifests, checkpoints, configs, split files and W&B logs there.
+
+For further approved studies under the current 80-epoch norm, use the existing
+canonical paths above and the snapshot-owned runner. Set
+`WANDB_ENTITY=ogrodowskijedrzej-put`, project `seg-opt`, and the appropriate logging
+mode; credentials stay on HPC. Pass
+`--seed` to `submit` or `pipeline`, not a new epoch-specific config copy. For
+adopted teacher artifacts, connect `pipeline --after-job` to a successful
+completion barrier for both the teacher and paired supervised baseline. Do not
+depend only on the teacher or bypass the validation gate. BPKD/SARD calibration
+is not part of this completed campaign and has not been submitted.
+
+## Validation-only Transfer Diagnosis (2026-11-10)
+
+All seven completed best-validation checkpoints were restored strictly and their
+config, checkpoint, and split hashes verified. GPU job 9561983 evaluated all 896
+validation images, without optimizer steps or test-set inference. Raw receipts
+and the source snapshot remain on Eagle under
+`/mnt/storage_6/project_data/pl1200-01/issue-15-cnn-kd/diagnostics/kd-transfer-20261110/`.
+The report is `validation.json` (SHA256
+`9862a94343ea1a7fc2b87d9e51789bfb268ccdf6e63781cf5e9fa7c6b86c4df4`).
+
+| Restored prediction | Validation mIoU (%) | Small-rock IoU (%) |
+| --- | ---: | ---: |
+| ResNet101 teacher | 89.25 | 77.29 |
+| Supervised Fast-SCNN, mean of three seeds | 85.66 | 72.45 |
+| Vanilla KD Fast-SCNN, mean of three seeds | 85.71 | 72.31 |
+| Teacher logits downsampled at stride 8, then bilinearly restored | 88.22 | 75.71 |
+
+These are post-hoc bf16-mixed measurements at batch size 4, not replacements for
+the original checkpoint-selection metrics; small numerical differences are
+expected. Coarsening is a visualization proxy for lost spatial detail, not a
+student result or an exact upper bound on achievable KD performance.
+
+For supervised seeds 42/43/44, the teacher correctly predicts 51.05/51.91/51.29%
+of the pixels those students misclassify. On ground-truth small-rock pixels, it
+corrects 42.66/43.07/41.83% of their errors. Teacher-only correct pixels outnumber
+student-only correct pixels by about 2:1 overall. These are pixel overlaps, not
+IoU gains or a deployable oracle; the teacher also makes unique errors.
+
+The diagnostic source snapshot's `scripts/diagnose_kd.py` measures gradients over
+every trainable student parameter on validation batches
+0/31/63/95/127/159/191/223 (32 images). At weight 1, stride 8, temperature 1,
+mean KD/task gradient-norm ratios are 0.58 for supervised checkpoints and 0.46
+for KD checkpoints; mean cosine similarities are 0.51 and 0.67. Negative cosine
+occurs in 4/24 and 3/24 checkpoint-batch pairs. The current KD signal is therefore
+neither uniformly negligible nor uniformly opposed to CE+Dice in this sample.
+Teacher small-rock predictions are sharp: mean top-class confidence 0.973 and
+entropy 0.065 nats.
+
+Temperature 4 at unchanged weight raises those mean norm ratios to 9.56/8.50
+and reduces mean cosines to 0.03/0.18. Temperature and weight must be calibrated
+together; raising temperature alone is not justified by these snapshots.
+Stride 1 gives similar aggregate parameter-gradient directions in this sample,
+so spatial coarsening alone does not establish a cause of the KD result.
+
+These eval-mode, final-checkpoint gradients do not reconstruct training dynamics
+or identify one causal failure. A next experiment should use a small,
+validation-selected weight/stride ablation with matched controls and a separate
+confirmation seed. No calibration training was launched by this diagnosis.

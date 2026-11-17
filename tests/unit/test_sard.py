@@ -323,7 +323,7 @@ def test_resnet34_sard_configs_preserve_the_controlled_cnn_protocol(variant):
     assert config.training.batch_size == 16
     assert config.training.accumulate_grad_batches == 1
     assert config.training.seed == 42
-    assert config.training.epochs == 20
+    assert config.training.epochs == 80
     assert Path(config.training.output_dir).parts[-4:] == (
         "sard", "fast_scnn_from_resnet34_unet", variant, "seed42"
     )

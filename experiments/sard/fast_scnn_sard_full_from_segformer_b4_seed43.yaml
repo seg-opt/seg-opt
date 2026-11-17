@@ -18,7 +18,7 @@ metrics: {trimap_kernel_size: 7}
 
 training:
   output_dir: results/sard/fast_scnn_from_segformer_b4/full/seed43
-  epochs: 20
+  epochs: 80
   batch_size: 8
   accumulate_grad_batches: 2
   learning_rate: 5.0e-4
