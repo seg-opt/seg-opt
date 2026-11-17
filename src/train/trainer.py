@@ -575,11 +575,6 @@ def create_trainer(
     ``fast_dev_run`` is a checkpoint-preserving one-batch smoke mode rather
     than Lightning's built-in mode, which disables checkpoint callbacks.
     """
-    if accumulate_grad_batches <= 0:
-        raise ValueError("accumulate_grad_batches must be positive")
-    if max_steps is not None and max_steps <= 0:
-        raise ValueError("max_steps must be positive when specified")
-
     output_dir = Path(output_dir)
     callbacks: list[Callback] = [
         ModelCheckpoint(
