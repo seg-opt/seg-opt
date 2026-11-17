@@ -183,9 +183,6 @@ class SegmentationMetrics(nn.Module):
             metrics.update(trimap_metrics)
         return metrics, confusion
 
-    def compute(self, stage: str) -> dict[str, torch.Tensor]:
-        return self.snapshot(stage)[0]
-
     def serializable(self, stage: str) -> dict[str, Any]:
         """Return JSON-safe metrics, including the target-by-prediction matrix."""
         metrics, confusion = self.snapshot(stage)
