@@ -54,10 +54,10 @@ def _checkpoint_callback(trainer: L.Trainer) -> ModelCheckpoint:
     callbacks = [
         callback
         for callback in trainer.callbacks
-        if isinstance(callback, ModelCheckpoint)
+        if isinstance(callback, ModelCheckpoint) and callback.monitor == "val/miou"
     ]
     if len(callbacks) != 1:
-        raise RuntimeError("canonical trainer must contain exactly one checkpoint callback")
+        raise RuntimeError("canonical trainer must contain exactly one best-mIoU checkpoint callback")
     return callbacks[0]
 
 
