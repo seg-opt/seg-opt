@@ -84,10 +84,11 @@ weights 1/0.5, noise alpha 0.5, radius 7, projection width 256, denoiser
 width 128, and stride 8. Full/uniform differ only in structure weights
 (2/1/1 versus 0/0/0). This is a five-variant single-seed pilot. Do not select
 settings using test metrics or treat the SegFormer-B4 runs (batch 8,
-accumulation 2) as controlled CNN loss comparisons. Future 100-epoch full
-runs need matched supervised controls and a separate validation-based
-protocol; the historical YAMLs remain at 20 epochs and no new runs are
-submitted in this packaging task.
+accumulation 2) as controlled CNN loss comparisons. Future 80-epoch full
+runs need matched supervised controls and a validation-based protocol. The
+canonical YAMLs now use 80 epochs; the historical 20-epoch protocol remains
+in the immutable run snapshots and resolved artifact configs. Changing these
+defaults does not submit new runs or change the completed pilot below.
 
 ## Completed CNN Pilot Results
 

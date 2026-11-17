@@ -85,7 +85,7 @@ def test_training_seed_rejects_invalid_values(seed):
         replace(config.training, seed=seed)
 
 
-def test_training_seed_defaults_to_42(tmp_path):
+def test_training_defaults_to_seed42_and_80_epochs(tmp_path):
     training = TrainingConfig(
         output_dir=str(tmp_path),
         batch_size=1,
@@ -94,6 +94,7 @@ def test_training_seed_defaults_to_42(tmp_path):
     )
 
     assert training.seed == 42
+    assert training.epochs == 80
 
 
 def test_resnet101_teacher_preserves_resnet34_training_protocol():
@@ -109,6 +110,62 @@ def test_resnet101_teacher_preserves_resnet34_training_protocol():
         larger.training, output_dir=previous.training.output_dir
     ) == previous.training
     assert larger.training.output_dir != previous.training.output_dir
+
+
+@pytest.mark.parametrize(
+    "family",
+    ["baselines_benchmark", "logit_distillation", "bpkd", "sard", "strong_teacher_distillation"],
+)
+def test_canonical_full_run_configs_use_80_epochs(family):
+    config_paths = sorted((Path("experiments") / family).glob("*.yaml"))
+
+    assert config_paths
+    for path in config_paths:
+        assert load_config(path).training.epochs == 80, str(path)
+
+
+def test_cnn_distillation_uses_canonical_teacher_and_matched_student_protocol():
+    baseline = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+    teacher_path = Path("experiments/baselines_benchmark/resnet101_unet.yaml")
+    teacher = load_config(teacher_path)
+    student = load_config("experiments/logit_distillation/fast_scnn_from_resnet101_unet.yaml")
+
+    assert baseline.training.epochs == teacher.training.epochs == student.training.epochs == 80
+    assert student.model == baseline.model
+    assert student.data == baseline.data == teacher.data
+    assert student.loss == baseline.loss == teacher.loss
+    assert student.metrics == baseline.metrics == teacher.metrics
+    assert baseline.distillation is None
+    assert teacher.distillation is None
+    assert replace(student.training, output_dir=baseline.training.output_dir) == baseline.training
+    assert student.distillation is not None
+    assert student.distillation.method == "vanilla"
+    assert student.distillation.vanilla_weight == 1.0
+    assert student.distillation.vanilla_temperature == 1.0
+    assert student.distillation.spatial_stride == 8
+    assert Path(student.distillation.teacher.config_path) == teacher_path.resolve()
+    assert Path(student.distillation.teacher.checkpoint_path) == (
+        Path(teacher.training.output_dir) / "checkpoints" / "best.ckpt"
+    )
+
+
+@pytest.mark.parametrize("student_name", ["fast_scnn", "segformer_b0"])
+def test_strong_teacher_configs_do_not_reuse_the_unverified_historical_checkpoint(student_name):
+    root = Path("experiments/strong_teacher_distillation")
+    teacher = load_config(root / "teacher_dinov3_mask2former.yaml")
+    student = load_config(root / f"{student_name}_logit_kd.yaml")
+
+    assert teacher.training.epochs == student.training.epochs == 80
+    assert Path(teacher.training.output_dir).parts[-3:] == (
+        "strong_teacher_distillation", "teacher_dinov3_mask2former", "seed42"
+    )
+    assert student.distillation is not None
+    assert Path(student.distillation.teacher.config_path) == (
+        root / "teacher_dinov3_mask2former.yaml"
+    ).resolve()
+    assert Path(student.distillation.teacher.checkpoint_path) == (
+        Path(teacher.training.output_dir) / "checkpoints" / "best.ckpt"
+    )
 
 
 def test_distillation_configuration_is_validated_and_round_trips(tmp_path):
