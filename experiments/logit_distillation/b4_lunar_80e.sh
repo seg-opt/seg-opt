@@ -90,7 +90,7 @@ if [[ ${CAMPAIGN_SMOKE:-0} == 1 ]]; then
 fi
 
 exec bash scripts/train.sbatch \
-    bash -c "python experiments/logit_distillation/${campaign}/check_wandb.py && exec python -m scripts.train \"\$@\"" _ \
+    bash -c "python experiments/logit_distillation/check_wandb.py && exec python -m scripts.train \"\$@\"" _ \
     --config "$experiment_dir/seed${seed}.yaml" \
     --output-dir "$output_dir" --devices 1 "${extra_args[@]}"
   ;;

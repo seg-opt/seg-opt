@@ -86,7 +86,7 @@ def test_training_arguments_and_container_environment(launcher, index, smoke):
     result = invoke(launcher, "train.sbatch", **({"CAMPAIGN_SMOKE": "1"} if smoke else {"SLURM_ARRAY_TASK_ID": index}))
     assert result.returncode == 0, result.stderr
     args, env = json.loads(result.stdout)
-    guard = f"{DISTILLATION}/{campaign}/check_wandb.py"
+    guard = f"{DISTILLATION}/check_wandb.py"
     seed = 42 + int(index or 0)
     assert args == ["bash", "-c", f'python {guard} && exec python -m scripts.train "$@"', "_",
                     "--config", f"{DISTILLATION}/{campaign}/seed{seed}.yaml", "--output-dir",
