@@ -15,8 +15,6 @@ import tempfile
 import uuid
 
 
-TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
-            "NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "DEADLINE", "REVOKED", "BLOCKED"}
 ALLOWLIST = ("src", "scripts", "experiments", "tests", "pyproject.toml", "uv.lock")
 RESOURCES = {"partition", "constraint", "gpus-per-node", "cpus-per-task", "mem", "time", "ntasks"}
 
@@ -49,8 +47,7 @@ def build_parser():
         command.add_argument("--profile", type=Path)
         command.add_argument("--wandb-mode", choices=("offline", "online", "disabled"))
         command.add_argument("--seed", type=parse_seed)
-    for name in ("status", "retry"):
-        commands.add_parser(name).add_argument("run", type=Path)
+    commands.add_parser("status").add_argument("run", type=Path)
     commands.add_parser("compare").add_argument("artifacts", nargs="+", type=Path)
     launch_parser = commands.add_parser("launch")
     launch_parser.add_argument("--smoke", action="store_true")
@@ -400,25 +397,6 @@ def status(run):
     return {"run": str(run), "stages": records}
 
 
-def retry(run):
-    run = Path(run).resolve()
-    with run_lock(run):
-        manifest = read_json(run / "manifest.json")
-        state = status(run)["stages"]
-        if any(record["state"] not in TERMINAL for record in state.values()):
-            raise ValueError("cannot retry while any stage is live or scheduler status is unknown")
-        selected = {name for name in manifest["stages"] if name not in state or state[name]["state"] != "COMPLETED"}
-        while True:
-            descendants = {name for name, definition in manifest["stages"].items()
-                           if selected.intersection(definition["needs"])}
-            if descendants <= selected:
-                break
-            selected.update(descendants)
-        if selected:
-            schedule(manifest, [name for name in manifest["stages"] if name in selected])
-    return str(run)
-
-
 def verified_artifact(directory, full=True):
     directory = Path(directory)
     metrics = read_json(directory / "metrics.json")
@@ -648,7 +626,7 @@ def worker(args):
         gpu_container(manifest, name, directory, Path(container_path(manifest, artifact)))
         return
     if (directory / "state.json").exists():
-        raise ValueError("attempt already started; use retry for a new attempt")
+        raise ValueError("attempt already started")
     atomic_json(directory / "state.json", {"state": "running"})
     try:
         for relative, expected in manifest["source_hashes"].items():
@@ -679,8 +657,6 @@ def main(argv=None):
             result = {"run": submit(args)}
         elif args.command == "status":
             result = status(args.run)
-        elif args.command == "retry":
-            result = {"run": retry(args.run)}
         elif args.command == "compare":
             result = compare(args.artifacts)
         elif args.command == "launch":
