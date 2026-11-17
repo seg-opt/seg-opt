@@ -1,5 +1,3 @@
-"""Summarize the clean teacher-candidate versus Fast-SCNN benchmark."""
-
 import argparse
 import json
 from pathlib import Path
