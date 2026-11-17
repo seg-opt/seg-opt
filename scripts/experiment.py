@@ -288,16 +288,11 @@ def schedule(manifest, selected):
     created = []
     current = {}
     for name in manifest["stages"]:
-        previous = latest_attempt(run, name)
-        if name in selected:
-            number = len(attempts(run, name)) + 1
-            directory = run / "stages" / name / f"attempt-{number:04d}"
-            directory.mkdir(parents=True)
-            artifact = run / "artifacts" / name / directory.name
-            atomic_json(directory / "attempt.json", {"stage": name, "artifact": str(artifact)})
-            current[name] = directory
-        elif previous:
-            current[name] = previous
+        directory = run / "stages" / name / "attempt-0001"
+        directory.mkdir(parents=True)
+        artifact = run / "artifacts" / name / directory.name
+        atomic_json(directory / "attempt.json", {"stage": name, "artifact": str(artifact)})
+        current[name] = directory
     try:
         for name in selected:
             definition = manifest["stages"][name]
