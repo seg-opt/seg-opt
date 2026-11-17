@@ -29,6 +29,7 @@ BASELINE_NAMES = {
     "mask2former_swinl",
 }
 CLASS_NAMES = ("background", "sky", "small_rock", "large_rock")
+LUSNAR_CLASS_NAMES = ("regolith", "crater", "rock", "mountain", "sky")
 BENCHMARK_CLASS_COUNTS = {"cityscapes": 19, "ade20k": 150}
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -91,12 +92,17 @@ class DataConfig:
     num_workers: int = 8
     mask_variant: Literal["ground", "clean"] = "ground"
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
-    dataset: Literal["lunar", "cityscapes", "ade20k"] = "lunar"
+    dataset: Literal["lunar", "cityscapes", "ade20k", "lusnar"] = "lunar"
 
     def __post_init__(self) -> None:
         if self.dataset == "lunar":
             if tuple(self.class_names) != CLASS_NAMES:
                 raise ValueError(f"class_names must be ordered as {list(CLASS_NAMES)}")
+        elif self.dataset == "lusnar":
+            if tuple(self.class_names) != LUSNAR_CLASS_NAMES:
+                raise ValueError(f"class_names must be ordered as {list(LUSNAR_CLASS_NAMES)}")
+            if self.mask_variant != "ground":
+                raise ValueError("LUSNAR only supports mask_variant='ground'")
         elif self.dataset in BENCHMARK_CLASS_COUNTS:
             expected = BENCHMARK_CLASS_COUNTS[self.dataset]
             if len(self.class_names) != expected:
@@ -104,7 +110,7 @@ class DataConfig:
             if len(set(self.class_names)) != len(self.class_names):
                 raise ValueError("class_names must be unique")
         else:
-            raise ValueError("dataset must be 'lunar', 'cityscapes' or 'ade20k'")
+            raise ValueError("dataset must be 'lunar', 'cityscapes', 'ade20k' or 'lusnar'")
         if self.image_height <= 0 or self.image_width <= 0:
             raise ValueError("image dimensions must be positive")
         if self.image_height % 32 or self.image_width % 32:

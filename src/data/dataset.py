@@ -38,7 +38,8 @@ Pair = tuple[Path, Path]
 PairedTransform = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
 MaskVariant = Literal["ground", "clean"]
 MASK_VARIANTS = ("ground", "clean")
-DatasetName = Literal["lunar", "cityscapes", "ade20k"]
+DatasetName = Literal["lunar", "cityscapes", "ade20k", "lusnar"]
+_LUSNAR_SAMPLE_PATTERN = re.compile(r"Moon_[1-9]/[0-9]+")
 _FRAME_ID_PATTERN = re.compile(r"\d{4}")
 # Cityscapes and ADE20K manifests list sample paths relative to the image root.
 _SAMPLE_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*")
@@ -228,6 +229,10 @@ def _validate_manifest_against_dataset(
 
 
 def _benchmark_pair(dataset: DatasetName, dataset_root: Path, sample_id: str) -> Pair:
+    if dataset == "lusnar":
+        scene, timestamp = sample_id.split("/")
+        root = dataset_root / "scenes" / scene / scene / "image0"
+        return root / "color" / f"{timestamp}.png", root / "label" / f"{timestamp}.png"
     if dataset == "cityscapes":
         return (
             dataset_root / "leftImg8bit" / f"{sample_id}_leftImg8bit.png",
@@ -258,6 +263,26 @@ def _validate_benchmark_manifest(manifest: SplitManifest, dataset_root: Path) ->
         )
 
 
+def _validate_lusnar_manifest(manifest: SplitManifest, dataset_root: Path) -> None:
+    scene_sets = [
+        {sample_id.split("/")[0] for sample_id in manifest.ids_for(split)}
+        for split in ("train", "validation", "test")
+    ]
+    if any(scene_sets[i] & scene_sets[j] for i, j in ((0, 1), (0, 2), (1, 2))):
+        raise ValueError("LUSNAR scenes must not overlap between splits")
+    _validate_benchmark_manifest(manifest, dataset_root)
+    images: set[str] = set()
+    masks: set[str] = set()
+    for scene in sorted((dataset_root / "scenes").glob("Moon_*")):
+        root = scene / scene.name / "image0"
+        images.update(f"{scene.name}/{path.stem}" for path in (root / "color").glob("*.png"))
+        masks.update(f"{scene.name}/{path.stem}" for path in (root / "label").glob("*.png"))
+    if images != masks:
+        raise ValueError("LUSNAR image/mask timestamps do not match")
+    if images != set(manifest.all_ids):
+        raise ValueError("LUSNAR split manifest must cover all image0 pairs")
+
+
 def load_split_manifest(
     path: str | Path = DEFAULT_SPLIT_MANIFEST,
     dataset_root: str | Path | None = None,
@@ -281,12 +306,13 @@ def load_split_manifest(
     if not isinstance(payload.get("seed"), int):
         raise ValueError("manifest seed must be an integer")
 
-    # Lunar manifests use "dataset" as a free-form name; only the benchmark
-    # names select a different loader.
+    # Legacy lunar manifests use "dataset" as a free-form name.
     dataset = payload.get("dataset")
-    if dataset not in {"cityscapes", "ade20k"}:
+    if dataset not in {"cityscapes", "ade20k", "lusnar"}:
         dataset = "lunar"
     pattern = _FRAME_ID_PATTERN if dataset == "lunar" else _SAMPLE_ID_PATTERN
+    if dataset == "lusnar":
+        pattern = _LUSNAR_SAMPLE_PATTERN
 
     splits = payload.get("splits")
     if not isinstance(splits, dict):
@@ -326,6 +352,8 @@ def load_split_manifest(
     if dataset_root is not None:
         if dataset == "lunar":
             _validate_manifest_against_dataset(manifest, Path(dataset_root))
+        elif dataset == "lusnar":
+            _validate_lusnar_manifest(manifest, Path(dataset_root))
         else:
             _validate_benchmark_manifest(manifest, Path(dataset_root))
     return manifest
@@ -374,10 +402,22 @@ def _decode_ade20k_pair(pair: Pair) -> tuple[np.ndarray, np.ndarray]:
     return image, labels
 
 
+def _decode_lusnar_pair(pair: Pair) -> tuple[np.ndarray, np.ndarray]:
+    image_path, mask_path = pair
+    with Image.open(image_path) as image_file:
+        image = np.asarray(image_file.convert("RGB"))
+    with Image.open(mask_path) as mask_file:
+        labels = np.asarray(mask_file).astype(np.int64)
+    if labels.ndim != 2 or np.any((labels < 0) | (labels > 4)):
+        raise ValueError("LUSNAR masks must contain class indices 0..4")
+    return image, labels
+
+
 _PAIR_DECODERS: dict[str, Callable[[Pair], tuple[np.ndarray, np.ndarray]]] = {
     "lunar": _decode_pair,
     "cityscapes": _decode_cityscapes_pair,
     "ade20k": _decode_ade20k_pair,
+    "lusnar": _decode_lusnar_pair,
 }
 
 
@@ -403,6 +443,8 @@ class LunarDataset(Dataset):
 
     @property
     def frame_ids(self) -> tuple[str, ...]:
+        if self.split_manifest is not None and self.split_manifest.dataset == "lusnar":
+            return tuple(f"{image.parents[2].name}/{image.stem}" for image, _ in self.pairs)
         return tuple(_frame_id(pair[0]) for pair in self.pairs)
 
     @property
@@ -476,6 +518,8 @@ def load_datasets(
         raise ValueError(
             f"mask_variant must be one of {list(MASK_VARIANTS)}, got {mask_variant!r}"
         )
+    if dataset == "lusnar" and mask_variant != "ground":
+        raise ValueError("LUSNAR only supports mask_variant='ground'")
     dataset_root = Path(dataset_root)
     manifest_dataset = load_split_manifest(split_manifest).dataset
     if manifest_dataset != dataset:
