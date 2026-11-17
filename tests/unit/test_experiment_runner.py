@@ -769,8 +769,14 @@ class ExperimentRunnerTests(unittest.TestCase):
         command = execute.call_args.args[1]
         self.assertEqual(command, ["bash", str(self.root / "scripts/train.sbatch"), "python", "-m",
                                    "scripts.train", "--config", "absent/b.yaml", "--devices", "1", "--fast-dev-run"])
-        self.assertEqual(execute.call_args.args[2]["WANDB_GROUP"], "b")
+        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "b")
         self.assertEqual(execute.call_args.args[2]["WANDB_MODE"], "offline")
+        with patch.dict(os.environ, {"WANDB_RUN_GROUP": "selected-group"}), \
+                patch.object(experiment.os, "execvpe") as execute:
+            experiment.launch(arguments)
+        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "selected-group")
 
 
 if __name__ == "__main__":
