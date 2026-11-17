@@ -15,8 +15,6 @@ import tempfile
 import uuid
 
 
-TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
-            "NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "DEADLINE", "REVOKED", "BLOCKED"}
 ALLOWLIST = ("src", "scripts", "experiments", "tests", "pyproject.toml", "uv.lock")
 RESOURCES = {"partition", "constraint", "gpus-per-node", "cpus-per-task", "mem", "time", "ntasks"}
 
@@ -49,12 +47,8 @@ def build_parser():
         command.add_argument("--profile", type=Path)
         command.add_argument("--wandb-mode", choices=("offline", "online", "disabled"))
         command.add_argument("--seed", type=parse_seed)
-    for name in ("status", "retry"):
-        commands.add_parser(name).add_argument("run", type=Path)
+    commands.add_parser("status").add_argument("run", type=Path)
     commands.add_parser("compare").add_argument("artifacts", nargs="+", type=Path)
-    launch_parser = commands.add_parser("launch")
-    launch_parser.add_argument("--smoke", action="store_true")
-    launch_parser.add_argument("configs", nargs="+")
     worker_parser = commands.add_parser("worker")
     worker_parser.add_argument("manifest", type=Path)
     worker_parser.add_argument("stage")
@@ -294,16 +288,11 @@ def schedule(manifest, selected):
     created = []
     current = {}
     for name in manifest["stages"]:
-        previous = latest_attempt(run, name)
-        if name in selected:
-            number = len(attempts(run, name)) + 1
-            directory = run / "stages" / name / f"attempt-{number:04d}"
-            directory.mkdir(parents=True)
-            artifact = run / "artifacts" / name / directory.name
-            atomic_json(directory / "attempt.json", {"stage": name, "artifact": str(artifact)})
-            current[name] = directory
-        elif previous:
-            current[name] = previous
+        directory = run / "stages" / name / "attempt-0001"
+        directory.mkdir(parents=True)
+        artifact = run / "artifacts" / name / directory.name
+        atomic_json(directory / "attempt.json", {"stage": name, "artifact": str(artifact)})
+        current[name] = directory
     try:
         for name in selected:
             definition = manifest["stages"][name]
@@ -398,25 +387,6 @@ def status(run):
             except (ValueError, KeyError, OSError) as error:
                 record.update(state="FAILED", error=str(error))
     return {"run": str(run), "stages": records}
-
-
-def retry(run):
-    run = Path(run).resolve()
-    with run_lock(run):
-        manifest = read_json(run / "manifest.json")
-        state = status(run)["stages"]
-        if any(record["state"] not in TERMINAL for record in state.values()):
-            raise ValueError("cannot retry while any stage is live or scheduler status is unknown")
-        selected = {name for name in manifest["stages"] if name not in state or state[name]["state"] != "COMPLETED"}
-        while True:
-            descendants = {name for name, definition in manifest["stages"].items()
-                           if selected.intersection(definition["needs"])}
-            if descendants <= selected:
-                break
-            selected.update(descendants)
-        if selected:
-            schedule(manifest, [name for name in manifest["stages"] if name in selected])
-    return str(run)
 
 
 def verified_artifact(directory, full=True):
@@ -528,26 +498,6 @@ def compare(paths):
     return report
 
 
-def launch(args):
-    index = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
-    if not re.fullmatch(r"0|[1-9][0-9]*", index) or int(index) >= len(args.configs):
-        raise ValueError("invalid SLURM_ARRAY_TASK_ID for supplied config list")
-    config = args.configs[int(index)]
-    root = Path(os.environ.get("REPO_PATH", os.environ.get("SLURM_SUBMIT_DIR", Path(__file__).resolve().parents[1]))).resolve()
-    environment = os.environ.copy()
-    environment["REPO_PATH"] = str(root)
-    for name, default in (("MODE", "offline"), ("PROJECT", "seg-opt"), ("RUN_GROUP", Path(config).stem)):
-        key = "WANDB_" + name
-        value = environment.setdefault(key, default)
-        for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
-            environment[prefix + key] = value
-    command = ["bash", str(root / "scripts/train.sbatch"), "python", "-m", "scripts.train",
-               "--config", config, "--devices", "1"]
-    if args.smoke:
-        command.append("--fast-dev-run")
-    os.execvpe("bash", command, environment)
-
-
 def stage_artifact(manifest, name):
     directory = latest_attempt(manifest["run"], name)
     return read_json(directory / "attempt.json")["artifact"]
@@ -648,7 +598,7 @@ def worker(args):
         gpu_container(manifest, name, directory, Path(container_path(manifest, artifact)))
         return
     if (directory / "state.json").exists():
-        raise ValueError("attempt already started; use retry for a new attempt")
+        raise ValueError("attempt already started")
     atomic_json(directory / "state.json", {"state": "running"})
     try:
         for relative, expected in manifest["source_hashes"].items():
@@ -679,12 +629,8 @@ def main(argv=None):
             result = {"run": submit(args)}
         elif args.command == "status":
             result = status(args.run)
-        elif args.command == "retry":
-            result = {"run": retry(args.run)}
         elif args.command == "compare":
             result = compare(args.artifacts)
-        elif args.command == "launch":
-            return launch(args)
         else:
             return worker(args)
         print(json.dumps(result, indent=2, allow_nan=False))
