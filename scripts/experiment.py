@@ -49,9 +49,6 @@ def build_parser():
         command.add_argument("--seed", type=parse_seed)
     commands.add_parser("status").add_argument("run", type=Path)
     commands.add_parser("compare").add_argument("artifacts", nargs="+", type=Path)
-    launch_parser = commands.add_parser("launch")
-    launch_parser.add_argument("--smoke", action="store_true")
-    launch_parser.add_argument("configs", nargs="+")
     worker_parser = commands.add_parser("worker")
     worker_parser.add_argument("manifest", type=Path)
     worker_parser.add_argument("stage")
@@ -506,26 +503,6 @@ def compare(paths):
     return report
 
 
-def launch(args):
-    index = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
-    if not re.fullmatch(r"0|[1-9][0-9]*", index) or int(index) >= len(args.configs):
-        raise ValueError("invalid SLURM_ARRAY_TASK_ID for supplied config list")
-    config = args.configs[int(index)]
-    root = Path(os.environ.get("REPO_PATH", os.environ.get("SLURM_SUBMIT_DIR", Path(__file__).resolve().parents[1]))).resolve()
-    environment = os.environ.copy()
-    environment["REPO_PATH"] = str(root)
-    for name, default in (("MODE", "offline"), ("PROJECT", "seg-opt"), ("RUN_GROUP", Path(config).stem)):
-        key = "WANDB_" + name
-        value = environment.setdefault(key, default)
-        for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
-            environment[prefix + key] = value
-    command = ["bash", str(root / "scripts/train.sbatch"), "python", "-m", "scripts.train",
-               "--config", config, "--devices", "1"]
-    if args.smoke:
-        command.append("--fast-dev-run")
-    os.execvpe("bash", command, environment)
-
-
 def stage_artifact(manifest, name):
     directory = latest_attempt(manifest["run"], name)
     return read_json(directory / "attempt.json")["artifact"]
@@ -659,8 +636,6 @@ def main(argv=None):
             result = status(args.run)
         elif args.command == "compare":
             result = compare(args.artifacts)
-        elif args.command == "launch":
-            return launch(args)
         else:
             return worker(args)
         print(json.dumps(result, indent=2, allow_nan=False))

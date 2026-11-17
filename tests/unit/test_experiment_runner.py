@@ -150,9 +150,11 @@ class ExperimentRunnerTests(unittest.TestCase):
         arguments = parser.parse_args(["submit", "experiments/example.yaml"])
         self.assertEqual(arguments.command, "submit")
         self.assertEqual(arguments.configs, ["experiments/example.yaml"])
-        with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as stopped:
-            parser.parse_args(["retry", str(self.output)])
-        self.assertEqual(stopped.exception.code, 2)
+        for command in ("retry", "launch"):
+            with self.subTest(command=command), redirect_stderr(StringIO()), \
+                    self.assertRaises(SystemExit) as stopped:
+                parser.parse_args([command, str(self.output)])
+            self.assertEqual(stopped.exception.code, 2)
 
     def test_submit_seed_is_persisted_for_every_gpu_stage_without_config_changes(self):
         for seed in (0, 42, 43, 44, 4294967295):
@@ -813,26 +815,6 @@ class ExperimentRunnerTests(unittest.TestCase):
     def test_default_profile_mounts_dataset_parent_for_existing_config_paths(self):
         profile = json.loads((Path(experiment.__file__).parent / "clusters/eagle.json").read_text())
         self.assertTrue(profile["data_path"].endswith("/datasets"))
-
-    def test_launch_validates_index_and_executes_existing_launcher_without_config_io(self):
-        arguments = experiment.build_parser().parse_args(["launch", "--smoke", "absent/a.yaml", "absent/b.yaml"])
-        for index in ("-1", "01", "x", "2"):
-            with patch.dict(os.environ, {"SLURM_ARRAY_TASK_ID": index}), self.assertRaises(ValueError):
-                experiment.launch(arguments)
-        with patch.dict(os.environ, {"SLURM_ARRAY_TASK_ID": "1"}), patch.object(experiment.os, "execvpe") as execute:
-            experiment.launch(arguments)
-        command = execute.call_args.args[1]
-        self.assertEqual(command, ["bash", str(self.root / "scripts/train.sbatch"), "python", "-m",
-                                   "scripts.train", "--config", "absent/b.yaml", "--devices", "1", "--fast-dev-run"])
-        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
-            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "b")
-        self.assertEqual(execute.call_args.args[2]["WANDB_MODE"], "offline")
-        with patch.dict(os.environ, {"WANDB_RUN_GROUP": "selected-group"}), \
-                patch.object(experiment.os, "execvpe") as execute:
-            experiment.launch(arguments)
-        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
-            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "selected-group")
-
 
 if __name__ == "__main__":
     unittest.main()
