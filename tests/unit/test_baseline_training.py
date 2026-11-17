@@ -206,6 +206,7 @@ def test_create_trainer_selects_one_best_miou_checkpoint_and_accumulates(
         precision="32-true",
         devices=1,
         accumulate_grad_batches=8,
+        max_steps=25,
         enable_wandb=False,
     )
     checkpoint = _checkpoint_callback(trainer)
@@ -215,18 +216,6 @@ def test_create_trainer_selects_one_best_miou_checkpoint_and_accumulates(
     assert checkpoint.save_top_k == 1
     assert checkpoint.filename == "best"
     assert trainer.accumulate_grad_batches == 8
-
-
-def test_create_trainer_honors_explicit_max_steps(tmp_path) -> None:
-    trainer = create_trainer(
-        tmp_path,
-        max_epochs=20,
-        max_steps=25,
-        precision="32-true",
-        devices=1,
-        enable_wandb=False,
-    )
-
     assert trainer.max_steps == 25
 
 
