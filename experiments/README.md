@@ -40,7 +40,7 @@ standalone DINOv3 exploration, not part of the benchmark decision path.
 
 Run these commands from the deployed repository root on HPC. The runner uses
 only the Python standard library; on Eagle, use `python3 -S` to bypass site
-hooks. Tests, training, and dependency installation belong on HPC only.
+hooks.
 
 ```bash
 python3 -S scripts/experiment.py submit experiments/baselines_benchmark/fast_scnn.yaml
@@ -54,8 +54,9 @@ establish a scientific teacher-quality gate. `pipeline` submits teacher smoke,
 teacher training, a CPU validation gate, KD smoke, KD training, and a terminal
 summary. Supply an existing KD config with `--config`, completed supervised
 student artifacts with `--baseline-artifacts`, and either `--teacher-config`
-or `--teacher-artifacts`. Adopted teacher artifacts can optionally use
-`--after-job JOB_ID`; the gate requires full, hash-verified artifacts, matching
+or `--teacher-artifacts`. Only adopted teacher artifacts accept `--after-job JOB_ID`,
+one job ID for a successful barrier completing both teacher and paired supervised
+baseline, not the teacher alone. The gate requires full, hash-verified artifacts, matching
 data/split protocols, and strictly better validation mIoU and small-rock IoU.
 Held-out test scores do not select the teacher.
 
@@ -77,9 +78,9 @@ not training settings or credentials. Environment overrides `IMAGE_PATH`,
 take precedence over profile defaults. Keep writable output and caches in
 grant storage; `DATA_PATH` mounts the dataset parent at `/datasets`.
 
-W&B defaults to offline with project `seg-opt`. Use `--wandb-mode
-offline|online|disabled` on managed submissions; online requires HPC
-authentication. Never store credentials in source. Offline logging is an
+W&B defaults to offline with project `seg-opt`; set `WANDB_ENTITY=ogrodowskijedrzej-put`.
+Use `--wandb-mode offline|online|disabled` on managed submissions; online requires
+HPC authentication. Never store credentials in source. Offline logging is an
 environment setting, not the trainer's `--offline` flag, which disables W&B.
 
 ## Durable runs and operations
