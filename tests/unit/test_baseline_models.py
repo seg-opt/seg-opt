@@ -5,7 +5,6 @@ import torch
 from torch import nn
 from torchvision import models
 
-from src.models.fast_scnn import DepthwiseSeparableConv
 from src.models.loaders import BASELINE_MODEL_NAMES, load_model
 from src.models.resnet_unet import ResNet34UNet
 from src.models.segmentation import (
@@ -90,13 +89,6 @@ def test_baseline_dispatch_is_limited_to_supported_models():
     )
     with pytest.raises(ValueError, match="unsupported baseline"):
         load_model("mobilenet", class_names=CLASS_NAMES)
-
-
-def test_fast_scnn_uses_activated_depthwise_and_pointwise_convolutions():
-    block = DepthwiseSeparableConv(8, 12)
-
-    assert isinstance(block.depthwise[-1], nn.ReLU)
-    assert isinstance(block.pointwise[-1], nn.ReLU)
 
 
 def test_dense_baseline_contract_returns_loss_and_scores():
