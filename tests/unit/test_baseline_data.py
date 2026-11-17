@@ -141,6 +141,30 @@ def test_manifest_validates_counts_disjointness_and_dataset_membership(tmp_path:
         load_split_manifest(path)
 
 
+@pytest.mark.parametrize("train,excluded,included,error", [
+    (["0001", "0003"], [], [], "frame IDs missing from the dataset"),
+    (["0001", "0002"], ["0002"], [], "quality-excluded frame IDs"),
+    (["0001"], [], [], "eligible dataset frame IDs"),
+    (["0001", "0002"], [], ["0003"], "explicitly included frame IDs"),
+])
+def test_manifest_rejects_invalid_dataset_membership(
+    tmp_path: Path, train, excluded, included, error,
+) -> None:
+    for frame_id in ("0001", "0002"):
+        _write_pair(tmp_path, frame_id)
+    (tmp_path / "excluded.txt").write_text("\n".join(excluded), encoding="utf-8")
+    (tmp_path / "included.txt").write_text("\n".join(included), encoding="utf-8")
+    path = tmp_path / "split.json"
+    _write_manifest(
+        path, train, [], [],
+        excluded_id_files=["excluded.txt"],
+        included_id_files=["included.txt"],
+    )
+
+    with pytest.raises(ValueError, match=error):
+        load_split_manifest(path, dataset_root=tmp_path)
+
+
 def test_dataset_loader_uses_manifest_order_and_exposes_metadata(tmp_path: Path) -> None:
     for index in range(1, 5):
         _write_pair(tmp_path, f"{index:04d}")
