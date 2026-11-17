@@ -2,21 +2,17 @@
 
 ## Training budget
 
-80 epochs is the default budget for active full runs, not a separate experiment
-family. Configure baselines in `baselines_benchmark/`, vanilla KD in
-`logit_distillation/`, and method variants in `bpkd/`, `sard/`, or
-`strong_teacher_distillation/`. Smoke limits are unchanged. The explicitly named
-`dinov3_mask2former/lunar_teacher_80e.yaml` remains a historical recipe, not an
-active default. Matching its epoch budget alone does not authorize checkpoint
-reuse: verify the full protocol and artifacts first (see
+Active full runs use 80 epochs in `baselines_benchmark/`,
+`logit_distillation/`, `bpkd/`, `sard/`, and `strong_teacher_distillation/`.
+Smoke limits are unchanged. `dinov3_mask2former/lunar_teacher_80e.yaml`
+is a historical recipe, not an active teacher config. Matching epochs alone
+does not authorize checkpoint reuse: verify the full protocol and artifacts (see
 [strong-teacher guidance](strong_teacher_distillation/README.md)).
 
-Historical results keep their actual epoch budgets. Their immutable source
-snapshots and resolved artifact configs preserve the original protocol;
-updating canonical YAML defaults must not rewrite those records. Do not mix
-budgets in controlled comparisons or reuse unmatched teacher/control artifacts.
-Use the managed runner's unique outputs, not direct training into historical
-standalone output directories.
+Historical runs retain their budgets in immutable source snapshots and resolved
+artifact configs; changing repository YAML defaults does not rewrite those records.
+Do not mix budgets or reuse unmatched teacher/control artifacts. New runs use
+unique runner outputs, not historical standalone directories.
 
 ## Clean baseline benchmark
 
