@@ -14,7 +14,7 @@ This uploads the given file to `~/pl1200-01/project_data/` on the cluster.
 
 ## Using the helper script
 
-[`scripts/upload_file_to_cluster.sh`](../scripts/upload_file_to_cluster.sh):
+[`scripts/upload_file_to_cluster.sh`](../../scripts/upload_file_to_cluster.sh):
 
 ```bash
 bash scripts/upload_file_to_cluster.sh --file <path> [--env prod|test] [--out-path <subdir>]
@@ -68,7 +68,7 @@ error rather than silently skipped by `scp`. For a whole tree, use the manual
 `scp -r` / `rsync -a` commands below.
 
 The script reuses the credential handling of
-[`scripts/connect_to_cluster.sh`](../scripts/connect_to_cluster.sh): it reads the
+[`scripts/connect_to_cluster.sh`](../../scripts/connect_to_cluster.sh): it reads the
 env file (stripping CR so Windows-edited files work), writes `SSH_KEY` to a
 temporary `0600` file, and deletes that file on exit. SSH runs with
 `BatchMode=yes` and `StrictHostKeyChecking=accept-new`, so it never blocks on a
@@ -77,7 +77,7 @@ prompt.
 ## Where to put the data
 
 `~` is only ~1 GB, so datasets always go under a grant. See
-[`pcss_cloud_resources.md`](pcss_cloud_resources.md) for the full layout.
+[`sources.md`](sources.md) for the full layout.
 
 | Destination                     | Use it for                                       | Backed up | Script |
 | ------------------------------- | ------------------------------------------------ | --------- | ------ |
@@ -179,7 +179,7 @@ scp -i <private_key> <username>@eagle.man.poznan.pl:pl1200-01/project_data/resul
 
 | Part                             | Meaning                                                            |
 | -------------------------------- | ------------------------------------------------------------------ |
-| `-i <private_key>`               | Private SSH key, same one [`connect_to_cluster.sh`](../scripts/connect_to_cluster.sh) uses. |
+| `-i <private_key>`               | Private SSH key, same one [`connect_to_cluster.sh`](../../scripts/connect_to_cluster.sh) uses. |
 | `<user>@<host>:<path>`           | Remote target; `<path>` is relative to `$HOME` unless it starts with `/`. |
 | trailing `/` on the destination  | Treat the target as a directory — it must already exist.           |
 | `-r`                             | Recurse into a directory (`scp` only; `rsync` uses `-a`).          |
@@ -190,7 +190,7 @@ scp -i <private_key> <username>@eagle.man.poznan.pl:pl1200-01/project_data/resul
 | Symptom                                  | Cause / fix                                                                          |
 | ---------------------------------------- | ------------------------------------------------------------------------------------ |
 | `Permission denied (publickey)`           | Wrong `SSH_KEY` or `USERNAME` in the env file; check with `bash scripts/connect_to_cluster.sh`. |
-| `error: .env.prod not found`               | Copy [`.env.example`](../.env.example) and fill it in.                               |
+| `error: .env.prod not found`               | Copy [`.env.example`](../../.env.example) and fill it in.                               |
 | `Disk quota exceeded`                     | You are writing to `~` instead of a grant directory, or the grant is full (`df -h ~/pl1200-01/project_data`). |
 | `error: checksum mismatch`                 | Transfer truncated — delete the remote file and re-run.                              |
 | `error: --env must be 'prod' or 'test'`    | Only those two env files are supported; add one if you need a third.                 |
@@ -198,4 +198,4 @@ scp -i <private_key> <username>@eagle.man.poznan.pl:pl1200-01/project_data/resul
 | No progress output at all                  | Output is a TTY and the tool's own meter is being used; or lower `PROGRESS_INTERVAL`. |
 | `scp: ... No such file or directory`       | Remote directory missing — the script creates it, by hand you must `mkdir -p` first. |
 
-> Sources for this page are listed in [`resources.md`](resources.md).
+> Sources for this page are listed in [`sources.md`](sources.md).

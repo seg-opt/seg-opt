@@ -208,7 +208,7 @@ docker run --rm seg-opt:local
 bash -n scripts/*.sh jobs/*.sbatch
 ```
 
-Cluster checks are documented in [test.md](test.md). Keep the H100 test opt-in because it queues and charges a real GPU allocation.
+Cluster checks are documented in [testing guide](testing.md). Keep the H100 test opt-in because it queues and charges a real GPU allocation.
 
 ## Troubleshooting
 

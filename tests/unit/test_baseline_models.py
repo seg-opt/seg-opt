@@ -81,6 +81,7 @@ def test_baseline_dispatch_is_limited_to_supported_models():
         "resnet34_unet",
         "resnet101_unet",
         "segformer_b0",
+        "segformer_b1",
         "segformer_b2",
         "segformer_b4",
         "dinov3_vitl16",

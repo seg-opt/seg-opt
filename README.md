@@ -43,7 +43,7 @@ metrics JSON. W&B is optional; local artifacts are authoritative.
 ## Containers on Eagle
 
 Eagle jobs use the development SIF instead of a host virtual environment. See
-`docs/containers.md` for the image lifecycle and `docs/test.md` for test layers.
+[container guide](docs/development/containers.md) for the image lifecycle and [testing guide](docs/development/testing.md) for test layers.
 
 ```bash
 export IMAGE_PATH="$HOME/<SERVICE_ID>/project_data/containers/seg-opt/development/images/<VERSION>/seg-opt-development-<VERSION>.sif"
@@ -65,3 +65,8 @@ sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
 sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
   experiments/baselines_benchmark/train.sbatch
 ```
+
+## Documentation
+
+See the [experiment inventory](docs/experiments/inventory.md),
+[development guides](docs/development/), and [cluster guides](docs/cluster/).
