@@ -8,7 +8,6 @@ from typing import Any, Callable, Iterable, Literal, Sequence
 import numpy as np
 import torch
 from PIL import Image
-from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
@@ -83,31 +82,6 @@ def load_excluded_ids(id_files: Iterable[str | Path]) -> set[str]:
 
 def filter_pairs(pairs: Sequence[Pair], excluded_ids: set[str]) -> list[Pair]:
     return [pair for pair in pairs if _frame_id(pair[0]) not in excluded_ids]
-
-
-def split_pairs(
-    pairs: Sequence[Pair],
-    train_frac: float = 0.8,
-    val_frac: float = 0.1,
-    test_frac: float = 0.1,
-    seed: int = 42,
-) -> tuple[list[Pair], list[Pair], list[Pair]]:
-    """Create an ad-hoc split; canonical baselines use the checked-in manifest."""
-    fractions = np.asarray([train_frac, val_frac, test_frac], dtype=np.float64)
-    if not np.isclose(fractions.sum(), 1.0) or np.any(fractions <= 0):
-        raise ValueError("train/validation/test fractions must be positive and sum to 1")
-    trainval, test = train_test_split(
-        list(pairs),
-        test_size=test_frac,
-        random_state=seed,
-    )
-    val_frac_of_trainval = val_frac / (train_frac + val_frac)
-    train, validation = train_test_split(
-        trainval,
-        test_size=val_frac_of_trainval,
-        random_state=seed,
-    )
-    return train, validation, test
 
 
 def _validate_manifest_ids(
