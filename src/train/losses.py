@@ -39,6 +39,7 @@ class SegmentationLoss(nn.Module):
         cross_entropy_weight: float = 1.0,
         dice_weight: float = 0.5,
         ignore_index: int = 255,
+        dice_eps: float = 1e-8,
     ) -> None:
         super().__init__()
 
@@ -50,6 +51,7 @@ class SegmentationLoss(nn.Module):
         self.cross_entropy_weight = cross_entropy_weight
         self.dice_weight = dice_weight
         self.ignore_index = ignore_index
+        self.dice_eps = dice_eps
         self.register_buffer("class_weights", weights)
 
     def forward(
@@ -77,7 +79,7 @@ class SegmentationLoss(nn.Module):
                 targets,
                 class_weights=self.class_weights,
                 ignore_index=self.ignore_index,
-                eps=1e-8,
+                eps=self.dice_eps,
             )
             total = total + self.dice_weight * soft_dice
         return total

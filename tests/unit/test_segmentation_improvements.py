@@ -49,6 +49,18 @@ def test_segmentation_loss_uses_weighted_macro_dice():
     torch.testing.assert_close(actual, loss(changed_ignored_logits, targets))
 
 
+@pytest.mark.parametrize("dice_eps", [None, 0.25])
+def test_segmentation_loss_uses_dice_eps(dice_eps):
+    kwargs = {} if dice_eps is None else {"dice_eps": dice_eps}
+    loss = SegmentationLoss(2, cross_entropy_weight=0, dice_weight=1, **kwargs)
+    eps = 1e-8 if dice_eps is None else dice_eps
+
+    actual = loss(torch.zeros(1, 2, 1, 1), torch.zeros(1, 1, 1, dtype=torch.long))
+
+    assert loss.dice_eps == eps
+    torch.testing.assert_close(actual, torch.tensor(1 - 0.5 / (1.5 + eps)))
+
+
 def test_benchmark_dinov3_config_is_a_full_frame_frozen_linear_probe():
     config = load_config("experiments/baselines_benchmark/dinov3_vitl16.yaml")
 
