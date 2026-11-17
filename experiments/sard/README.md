@@ -68,15 +68,8 @@ needed for this historical pilot.
 | Uniform SARD | sard/fast_scnn_sard_uniform_from_resnet34_unet.yaml |
 | Full SARD | sard/fast_scnn_sard_full_from_resnet34_unet.yaml |
 
-Use the shared artifact-verifying `pipeline` interface for CNN configs,
-not the SegFormer-specific SARD wrapper above. It accepts the selected
-`--config`, completed `--baseline-artifacts`, and `--teacher-artifacts`.
-The validation teacher gate checks matching data/split and real full-run
-checkpoint/config/split hashes before KD. Managed runs retain immutable
-source snapshots and unique attempt outputs; existing artifacts are never
-overwritten. Per-study `study.json`, `comparison.json`, and audited
-`analysis.json` receipts record run IDs, job IDs, artifact locations,
-hashes, and resolved protocols in the chosen study directory.
+CNN configs use `pipeline`, not `experiments/sard/submit.sh` above.
+Gate, hashes, and snapshot outputs: [experiment guide](../README.md).
 
 BPKD weights and SARD settings are transferred starting values from another
 dataset protocol, not tuned ResNet34 optima. SARD uses feature/distribution
