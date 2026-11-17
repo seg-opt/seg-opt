@@ -104,6 +104,20 @@ class ExperimentRunnerTests(unittest.TestCase):
         (directory / "metrics.json").write_text(json.dumps(metrics))
         return directory
 
+    def distillation_artifact(self, name, weight=1.0, teacher_hashes=None):
+        teacher = {"config_path": f"/{name}/teacher.yaml",
+                   "checkpoint_path": f"/{name}/best.ckpt"}
+        settings = {"method": "vanilla", "vanilla_weight": weight}
+        directory = self.artifact(name, settings={
+            "training": {}, "distillation": {**settings, "teacher": teacher}})
+        metrics = experiment.read_json(directory / "metrics.json")
+        metrics["distillation"] = {
+            "method": "vanilla", "settings": settings,
+            "teacher": {**teacher, "config_sha256": "a" * 64,
+                        "checkpoint_sha256": "b" * 64, **(teacher_hashes or {})}}
+        experiment.atomic_json(directory / "metrics.json", metrics)
+        return directory
+
     def pipeline(self, teacher=None):
         baseline = self.artifact("baseline")
         arguments = ["pipeline", "--config", "experiments/kd.yaml",
@@ -482,6 +496,35 @@ class ExperimentRunnerTests(unittest.TestCase):
         self.assertEqual(sum("training protocol unavailable/unverified" in warning
                              for warning in report["warnings"]), 2)
         self.assertFalse(any("batch_size" in warning for warning in report["warnings"]))
+
+    def test_compare_ignores_teacher_path_only_differences(self):
+        baseline = self.distillation_artifact("baseline")
+        relocated = self.distillation_artifact("relocated")
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, relocated])
+        self.assertEqual(report["warnings"], [])
+
+    def test_compare_warns_on_distillation_weight_without_teacher_path_noise(self):
+        baseline = self.distillation_artifact("baseline")
+        changed = self.distillation_artifact("changed", weight=2.0)
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, changed])
+        self.assertEqual(report["warnings"], [f"{changed}: distillation settings differs",
+                                               f"{changed}: distillation protocol differs"])
+
+    def test_compare_warns_on_teacher_hash_without_teacher_path_noise(self):
+        baseline = self.distillation_artifact("baseline")
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for field in ("config_sha256", "checkpoint_sha256"):
+            changed = self.distillation_artifact(field, teacher_hashes={field: "c" * 64})
+            with self.subTest(field=field), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare([baseline, changed])
+                self.assertEqual(report["warnings"], [f"{changed}: distillation teacher differs"])
 
     def test_compare_warns_on_each_model_protocol_difference(self):
         model = {"name": "fast_scnn", "model_id": None,
