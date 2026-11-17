@@ -2,15 +2,17 @@
 
 ## Training budget
 
-100 epochs is the default budget for active full runs, not a separate experiment
+80 epochs is the default budget for active full runs, not a separate experiment
 family. Configure baselines in `baselines_benchmark/`, vanilla KD in
 `logit_distillation/`, and method variants in `bpkd/`, `sard/`, or
 `strong_teacher_distillation/`. Smoke limits are unchanged. The explicitly named
 `dinov3_mask2former/lunar_teacher_80e.yaml` remains a historical recipe, not an
-active default.
+active default. Matching its epoch budget alone does not authorize checkpoint
+reuse: verify the full protocol and artifacts first (see
+[strong-teacher guidance](strong_teacher_distillation/README.md)).
 
-Historical results keep their actual 20- or 80-epoch budgets. Their immutable
-source snapshots and resolved artifact configs preserve the original protocol;
+Historical results keep their actual epoch budgets. Their immutable source
+snapshots and resolved artifact configs preserve the original protocol;
 updating canonical YAML defaults must not rewrite those records. Do not mix
 budgets in controlled comparisons or reuse unmatched teacher/control artifacts.
 Use the managed runner's unique outputs, not direct training into historical
@@ -167,7 +169,7 @@ Fast-SCNN using vanilla logit KD:
 
 Both preserve the supervised Fast-SCNN model, clean masks, aligned seed-42
 split, 512 x 768 images, augmentation, CE 1.0 + Dice 0.5 task loss, and
-kernel-7 trimap metrics. Full training uses 100 epochs, physical batch
+kernel-7 trimap metrics. Full training uses 80 epochs, physical batch
 16, accumulation 1, learning rate 5e-4, weight decay 0.05, warmup fraction
 0.05, bf16 precision, and seed 42. KD uses temperature 1, weight 1, and a
 stride-8 loss grid; this grid is not the student's output resolution.
@@ -180,7 +182,7 @@ must pass before KD; test scores are reporting only. Student seed overrides
 43 and 44 leave the split and seed-42 teacher fixed. Batch 8 with accumulation
 2 is not BatchNorm-equivalent to physical batch 16, so SegFormer runs using
 that setting are not controlled CNN loss comparisons. The historical results
-below used 20 epochs; current canonical YAMLs use 100. Compare only matched
+below used 20 epochs; current canonical YAMLs use 80. Compare only matched
 training budgets and preserve the original resolved configs on HPC.
 
 ## Controlled CNN BPKD/SARD Pilot Protocol
@@ -189,7 +191,7 @@ The five historical seed-42 ablations reuse the same ResNet34 teacher and
 Fast-SCNN supervised/vanilla references. Their completed runs preserved the CNN
 data, task loss, metrics, and a 20-epoch physical-batch-16/accumulation-1 training
 protocol; only distillation settings and output routing differed. The canonical
-configs now use the standard 100-epoch budget with matched controls.
+configs now use the standard 80-epoch budget with matched controls.
 
 | Variant | Config relative to experiments/ |
 | --- | --- |
@@ -268,8 +270,9 @@ protocol fixed using validation before viewing new test outcomes.
 
 ## Completed ResNet101 CNN Campaign
 
-The completed campaign used the canonical Fast-SCNN baseline, ResNet101-U-Net
-teacher, and vanilla KD protocol above, with 100 epochs for every full run.
+This historical campaign predates the 80-epoch norm adopted on 2026-11-17.
+It used the Fast-SCNN baseline, ResNet101-U-Net teacher, and vanilla KD protocol
+with 100 epochs for every full run; these records retain their actual budget.
 Student training seeds are 42/43/44; all share one seed-42 teacher and the fixed
 seed-42 data split. The teacher used batch 8 with accumulation 2, LR 3e-4 and
 backbone LR 3e-5; students used physical batch 16 and LR 5e-4. Vanilla KD retained
@@ -297,9 +300,10 @@ That historical storage name and its recorded source/config hashes do not
 require a separate experiment family in the current repository. Preserve all
 manifests, checkpoints, configs, split files and W&B logs there.
 
-For further approved replications, use the existing canonical paths above and
-the snapshot-owned runner. Set `WANDB_ENTITY=ogrodowskijedrzej-put`, project
-`seg-opt`, and the appropriate logging mode; credentials stay on HPC. Pass
+For further approved studies under the current 80-epoch norm, use the existing
+canonical paths above and the snapshot-owned runner. Set
+`WANDB_ENTITY=ogrodowskijedrzej-put`, project `seg-opt`, and the appropriate logging
+mode; credentials stay on HPC. Pass
 `--seed` to `submit` or `pipeline`, not a new epoch-specific config copy. For
 adopted teacher artifacts, connect `pipeline --after-job` to a successful
 completion barrier for both the teacher and paired supervised baseline. Do not

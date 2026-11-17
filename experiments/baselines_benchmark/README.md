@@ -3,7 +3,7 @@
 This is the single active experiment stage before any distillation work. It
 trains one Fast-SCNN student and four independent teacher candidates on exactly
 the same clean masks, aligned seed-42 split, 512x768 frames, augmentations,
-loss, and 100-epoch budget. The only model-specific settings are initialization
+loss, and 80-epoch budget. The only model-specific settings are initialization
 and the learning-rate/batch configuration already used by the canonical
 baselines.
 

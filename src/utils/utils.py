@@ -124,7 +124,7 @@ class TrainingConfig:
     accumulate_grad_batches: int
     learning_rate: float
     backbone_learning_rate: float | None = None
-    epochs: int = 100
+    epochs: int = 80
     weight_decay: float = 0.05
     warmup_fraction: float = 0.05
     precision: Literal["fp32", "fp16", "bf16"] = "bf16"

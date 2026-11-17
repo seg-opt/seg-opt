@@ -18,7 +18,7 @@ metrics: {trimap_kernel_size: 7}
 
 training:
   output_dir: results/bpkd/fast_scnn_clean/task_only/seed42
-  epochs: 100
+  epochs: 80
   batch_size: 2
   accumulate_grad_batches: 8
   learning_rate: 5.0e-4
