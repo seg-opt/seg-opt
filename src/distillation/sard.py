@@ -99,8 +99,6 @@ def structure_cues(
     density_radius: int = 7,
 ) -> StructureCues:
     """Return the raw ``E``, ``C`` and ``D`` maps, each shaped ``[B, H, W]``."""
-    if teacher_features.ndim != 4:
-        raise ValueError("teacher_features must have shape [B, C, H, W]")
     if density_radius < 0:
         raise ValueError("density_radius must be non-negative")
     features = teacher_features.detach().float()
@@ -254,10 +252,6 @@ class SARDLoss(nn.Module):
         teacher_features: torch.Tensor,
         labels: torch.Tensor,
     ) -> DistillationLossResult:
-        if student_features.ndim != 4 or teacher_features.ndim != 4:
-            raise ValueError("SARD features must have shape [B, C, H, W]")
-        if labels.ndim != 3:
-            raise ValueError("labels must have shape [B, H, W]")
         if not student_features.shape[0] == teacher_features.shape[0] == labels.shape[0]:
             raise ValueError("features and labels must have matching batch size")
         size = (

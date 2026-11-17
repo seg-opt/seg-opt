@@ -88,8 +88,6 @@ def boundary_masks(
     """
     _validate_kernel_size(edge_kernel_size)
     _validate_labels(labels, num_classes=num_classes, ignore_index=ignore_index)
-    if min(output_size) <= 0:
-        raise ValueError("output_size dimensions must be positive")
 
     valid = labels != ignore_index
     safe_labels = labels.masked_fill(~valid, 0)
@@ -169,8 +167,6 @@ def _validate_logits(
 
 
 def _distillation_size(logits: torch.Tensor, spatial_stride: int) -> tuple[int, int]:
-    if spatial_stride <= 0:
-        raise ValueError("spatial_stride must be positive")
     height, width = logits.shape[-2:]
     return (
         (height + spatial_stride - 1) // spatial_stride,
@@ -183,17 +179,9 @@ def _prepared_logits(
     teacher_logits: torch.Tensor,
     labels: torch.Tensor,
     *,
-    num_classes: int,
     spatial_stride: int,
     ignore_index: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    _validate_logits(
-        student_logits,
-        teacher_logits,
-        labels,
-        num_classes=num_classes,
-    )
-    _validate_labels(labels, num_classes=num_classes, ignore_index=ignore_index)
     output_size = _distillation_size(student_logits, spatial_stride)
     student = F.interpolate(
         student_logits.float(),
@@ -216,8 +204,6 @@ def _pixel_kl(
     teacher_logits: torch.Tensor,
     temperature: float,
 ) -> torch.Tensor:
-    if temperature <= 0:
-        raise ValueError("temperature must be positive")
     scaled_student = student_logits / temperature
     scaled_teacher = teacher_logits / temperature
     teacher_probabilities = F.softmax(scaled_teacher, dim=1)
@@ -236,8 +222,6 @@ def _spatial_channel_kl(
     temperature: float,
 ) -> torch.Tensor:
     """CWD-style KL over pixels within each semantic channel."""
-    if temperature <= 0:
-        raise ValueError("temperature must be positive")
     batch, channels, height, width = student_logits.shape
     valid_positions = valid.bool().expand(-1, channels, -1, -1)
     student = (student_logits / temperature).reshape(batch * channels, height * width)
@@ -399,7 +383,6 @@ class BPKDLoss(nn.Module):
             student_logits,
             teacher_logits,
             labels,
-            num_classes=self.num_classes,
             spatial_stride=self.spatial_stride,
             ignore_index=self.ignore_index,
         )
@@ -494,7 +477,6 @@ class PixelWiseKDLoss(nn.Module):
             student_logits,
             teacher_logits,
             labels,
-            num_classes=self.num_classes,
             spatial_stride=self.spatial_stride,
             ignore_index=self.ignore_index,
         )
