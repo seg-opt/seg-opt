@@ -354,8 +354,6 @@ class DistillationModule(BaselineModule):
     def _distillation_logits(model: nn.Module, scores: torch.Tensor) -> torch.Tensor:
         converter = getattr(model, "to_distillation_logits", None)
         logits = converter(scores) if callable(converter) else scores
-        if not isinstance(logits, torch.Tensor):
-            raise TypeError("to_distillation_logits must return a tensor")
         return logits
 
     def train(self, mode: bool = True) -> "DistillationModule":
@@ -406,11 +404,6 @@ class DistillationModule(BaselineModule):
                 self._distillation_logits(self.teacher, teacher_scores),
                 labels,
             )
-        if not isinstance(result, DistillationLossResult):
-            raise TypeError("distillation_loss must return DistillationLossResult")
-        if result.total.ndim != 0:
-            raise TypeError("distillation loss must return a scalar tensor")
-
         loss = task_loss + result.total
         self.metrics.update("train", scores.detach().argmax(dim=1), labels)
         self._log_loss("train", loss, batch_size=images.shape[0], on_step=True)
