@@ -159,8 +159,6 @@ def evaluate_checkpoint(
     """Restore one checkpoint, run validation/test, and write metrics.json."""
     checkpoint_path = Path(checkpoint_path).resolve()
     output_dir = Path(output_dir)
-    if not checkpoint_path.is_file():
-        raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
 
     if trainer is None:
         limit = 1 if run_kind == "smoke" else 1.0
