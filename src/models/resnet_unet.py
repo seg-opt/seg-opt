@@ -51,8 +51,6 @@ class DecoderBlock(nn.Module):
 
 
 class ResNetUNet(SemanticSegmenter):
-    """ResNet encoder with a four-stage skip-connected U-Net decoder."""
-
     def __init__(
         self,
         encoder: nn.Module,

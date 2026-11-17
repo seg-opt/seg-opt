@@ -52,10 +52,6 @@ def _class_names(
         class_names = tuple(class_names)
         if num_classes is not None and len(class_names) != num_classes:
             raise ValueError("num_classes must match the length of class_names")
-    if not class_names:
-        raise ValueError("class_names cannot be empty")
-    if len(set(class_names)) != len(class_names):
-        raise ValueError("class_names must be unique")
     return tuple(class_names)
 
 
@@ -96,21 +92,13 @@ def load_segformer(
     from transformers import SegformerConfig, SegformerForSemanticSegmentation
 
     id2label, label2id = _label_maps(class_names)
+    labels = {"num_labels": len(class_names), "id2label": id2label, "label2id": label2id}
     if pretrained:
         model = SegformerForSemanticSegmentation.from_pretrained(
-            model_id,
-            num_labels=len(class_names),
-            id2label=id2label,
-            label2id=label2id,
-            ignore_mismatched_sizes=True,
+            model_id, **labels, ignore_mismatched_sizes=True
         )
     else:
-        config = SegformerConfig.from_pretrained(
-            model_id,
-            num_labels=len(class_names),
-            id2label=id2label,
-            label2id=label2id,
-        )
+        config = SegformerConfig.from_pretrained(model_id, **labels)
         model = SegformerForSemanticSegmentation(config)
     return SegFormerSegmenter(model, class_names)
 
@@ -118,12 +106,6 @@ def load_segformer(
 def _build_dinov3(
     model_id: str,
     class_names: Sequence[str],
-    freeze_backbone: bool = True,
-    head_type: str = "linear",
-    head_batch_norm: bool = True,
-    head_hidden_channels: int = 256,
-    head_dropout: float = 0.1,
-    unfreeze_last_blocks: int = 0,
 ) -> DINOv3Segmenter:
     from transformers import AutoModel
 
@@ -131,12 +113,6 @@ def _build_dinov3(
     return DINOv3Segmenter(
         backbone=backbone,
         num_classes=len(class_names),
-        freeze_backbone=freeze_backbone,
-        head_type=head_type,
-        head_batch_norm=head_batch_norm,
-        head_hidden_channels=head_hidden_channels,
-        head_dropout=head_dropout,
-        unfreeze_last_blocks=unfreeze_last_blocks,
         class_names=class_names,
     )
 
@@ -185,7 +161,6 @@ def _build_dinov3_mask2former(
     pixel_level_module.encoder = DINOv3PyramidBackbone(
         backbone,
         output_channels,
-        freeze_backbone=True,
     )
     return DINOv3Mask2FormerSegmenter(
         model,
@@ -204,19 +179,15 @@ def load_model(
     decoder_model_id: str | None = None,
     ignore_index: int = 255,
 ) -> SemanticSegmenter:
-    """Build one of the supervised segmentation benchmark models."""
     if model_name not in BASELINE_MODEL_NAMES:
-        allowed = ", ".join(BASELINE_MODEL_NAMES)
-        raise ValueError(f"unsupported baseline {model_name!r}; choose one of: {allowed}")
+        raise ValueError(f"unsupported baseline {model_name!r}")
 
     names = _class_names(num_classes, class_names)
     use_pretrained = model_name != "fast_scnn" if pretrained is None else pretrained
 
     if model_name == "fast_scnn":
         if use_pretrained:
-            raise ValueError(
-                "Fast-SCNN does not have pretrained weights; set pretrained=false"
-            )
+            raise ValueError("fast_scnn has no pretrained weights")
         return FastSCNN(len(names), class_names=names)
     if model_name == "resnet34_unet":
         return load_resnet34_unet(names, pretrained=use_pretrained)
@@ -234,9 +205,6 @@ def load_model(
         return _build_dinov3(
             model_id or DEFAULT_MODEL_IDS[model_name],
             names,
-            freeze_backbone=True,
-            head_type="linear",
-            head_batch_norm=True,
         )
     if model_name == "dinov3_vitl16_mask2former":
         return _build_dinov3_mask2former(

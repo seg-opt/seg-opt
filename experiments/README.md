@@ -131,7 +131,7 @@ ordered seven-model list; BPKD retains eight configs; the Mask2Former screen
 retains two. Baseline smoke defaults to Fast-SCNN. Resource headers and suite
 project/group defaults remain available; explicit `WANDB_MODE`,
 `WANDB_PROJECT`, and `WANDB_RUN_GROUP` settings are preserved. Shared launch
-also honors `WANDB_GROUP`, defaulting it to the selected config stem.
+also honors `WANDB_RUN_GROUP`, defaulting it to the selected config stem.
 
 Direct `sbatch` launches one config per array task. Adjust `--array` when
 overriding a suite list; shared launch validates the array index:
