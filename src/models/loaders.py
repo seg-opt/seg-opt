@@ -52,10 +52,6 @@ def _class_names(
         class_names = tuple(class_names)
         if num_classes is not None and len(class_names) != num_classes:
             raise ValueError("num_classes must match the length of class_names")
-    if not class_names:
-        raise ValueError("class_names cannot be empty")
-    if len(set(class_names)) != len(class_names):
-        raise ValueError("class_names must be unique")
     return tuple(class_names)
 
 
