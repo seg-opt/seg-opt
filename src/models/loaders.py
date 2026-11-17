@@ -92,21 +92,13 @@ def load_segformer(
     from transformers import SegformerConfig, SegformerForSemanticSegmentation
 
     id2label, label2id = _label_maps(class_names)
+    labels = {"num_labels": len(class_names), "id2label": id2label, "label2id": label2id}
     if pretrained:
         model = SegformerForSemanticSegmentation.from_pretrained(
-            model_id,
-            num_labels=len(class_names),
-            id2label=id2label,
-            label2id=label2id,
-            ignore_mismatched_sizes=True,
+            model_id, **labels, ignore_mismatched_sizes=True
         )
     else:
-        config = SegformerConfig.from_pretrained(
-            model_id,
-            num_labels=len(class_names),
-            id2label=id2label,
-            label2id=label2id,
-        )
+        config = SegformerConfig.from_pretrained(model_id, **labels)
         model = SegformerForSemanticSegmentation(config)
     return SegFormerSegmenter(model, class_names)
 
