@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
@@ -8,6 +10,7 @@ from src.data.dataloaders import make_dataloader, make_dataloaders, move_batch_t
 from src.data.dataset import (
     LunarDataset,
     _mask_from_ground,
+    filter_pairs,
     find_pairs,
     load_excluded_ids,
 )
@@ -62,13 +65,20 @@ def test_exclusions_and_mask_decoding(tmp_path):
     second = tmp_path / "second.txt"
     first.write_text("0002\n0004\n")
     second.write_text("0004\n")
+    pairs = [
+        (Path(f"render{index:04d}.png"), Path(f"ground{index:04d}.png"))
+        for index in range(1, 5)
+    ]
+
     excluded = load_excluded_ids([first, second])
+    filtered = filter_pairs(pairs, excluded)
     ground = np.array(
         [[[0, 0, 0], [0, 0, 255], [0, 255, 0], [255, 0, 0], [9, 1, 1]]],
         dtype=np.uint8,
     )
 
     assert excluded == {"0002", "0004"}
+    assert [image.stem for image, _ in filtered] == ["render0001", "render0003"]
     # Dataset colors are blue=large rock, green=small rock, and red=sky.
     np.testing.assert_array_equal(_mask_from_ground(ground), [[0, 3, 2, 1, 0]])
 

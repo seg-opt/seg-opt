@@ -80,6 +80,10 @@ def load_excluded_ids(id_files: Iterable[str | Path]) -> set[str]:
     return excluded
 
 
+def filter_pairs(pairs: Sequence[Pair], excluded_ids: set[str]) -> list[Pair]:
+    return [pair for pair in pairs if _frame_id(pair[0]) not in excluded_ids]
+
+
 def _validate_manifest_ids(
     split_name: str,
     values: Any,
