@@ -82,7 +82,9 @@ BPKD weights and SARD settings are transferred starting values from another
 dataset protocol, not tuned ResNet34 optima. SARD uses feature/distribution
 weights 1/0.5, noise alpha 0.5, radius 7, projection width 256, denoiser
 width 128, and stride 8. Full/uniform differ only in structure weights
-(2/1/1 versus 0/0/0). This is a five-variant single-seed pilot. Do not select
+(2/1/1 versus 0/0/0).
+BPKD keeps temperature 1, edge alpha 2, window 7, PRM, and POM.
+This is a five-variant single-seed pilot. Do not select
 settings using test metrics or treat the SegFormer-B4 runs (batch 8,
 accumulation 2) as controlled CNN loss comparisons. Future 80-epoch full
 runs need matched supervised controls and a validation-based protocol. The
