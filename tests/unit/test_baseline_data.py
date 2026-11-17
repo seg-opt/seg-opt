@@ -62,7 +62,8 @@ def _write_manifest(
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def test_full_frame_transforms_have_fixed_shape_and_keep_alignment() -> None:
+@pytest.mark.parametrize("flip_probability", [0.0, 1.0])
+def test_full_frame_transforms_have_fixed_shape_and_keep_alignment(flip_probability) -> None:
     image = np.zeros((4, 6, 3), dtype=np.uint8)
     mask = np.zeros((4, 6), dtype=np.int64)
     image[1:3, 3:6, 0] = 255
@@ -82,7 +83,7 @@ def test_full_frame_transforms_have_fixed_shape_and_keep_alignment() -> None:
 
     random.seed(7)
     train_image, train_mask = TrainSegmentationTransform(
-        flip_probability=1.0,
+        flip_probability=flip_probability,
         brightness=0.0,
         contrast=0.0,
         gamma_min=1.0,
@@ -91,9 +92,11 @@ def test_full_frame_transforms_have_fixed_shape_and_keep_alignment() -> None:
     assert train_image.shape == (512, 768, 3)
     assert train_mask.shape == (512, 768)
     assert train_image[..., 0][train_mask == 3].mean() > 200
-    assert np.count_nonzero(train_mask[:, :384] == 3) > np.count_nonzero(
-        train_mask[:, 384:] == 3
-    )
+    assert train_image[..., 0][train_mask == 0].mean() < 30
+    assert (
+        np.count_nonzero(train_mask[:, :384] == 3)
+        > np.count_nonzero(train_mask[:, 384:] == 3)
+    ) == bool(flip_probability)
 
 
 def test_imagenet_processor_normalizes_without_resizing() -> None:
