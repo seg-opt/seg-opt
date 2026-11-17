@@ -40,7 +40,6 @@ def build_baseline(
     *,
     include_distillation: bool = True,
 ) -> BaselineComponents:
-    """Build the common model, data, loss, and Lightning module for one baseline."""
     processor = SegmentationImageProcessor()
     train_transform = TrainSegmentationTransform(
         height=config.data.image_height,
@@ -199,7 +198,6 @@ def _teacher_model_state(checkpoint_path: Path) -> dict[str, torch.Tensor]:
 
 
 def load_distillation_teacher(config: BaselineConfig) -> SemanticSegmenter:
-    """Restore a supervised canonical teacher and validate its data provenance."""
     if config.distillation is None:
         raise ValueError("a distillation configuration is required to load a teacher")
     teacher_reference = config.distillation.teacher
