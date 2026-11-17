@@ -66,11 +66,6 @@ def _trimap_iou(metrics: dict[str, Any], split: str, name: str) -> float:
 
 
 def render_summary(metrics_by_name: dict[str, dict[str, Any]]) -> str:
-    required = {STUDENT, *TEACHER_CANDIDATES}
-    missing = required - metrics_by_name.keys()
-    if missing:
-        raise ValueError(f"missing benchmark metrics for: {', '.join(sorted(missing))}")
-
     student = metrics_by_name[STUDENT]
     teacher_name = max(
         TEACHER_CANDIDATES,
