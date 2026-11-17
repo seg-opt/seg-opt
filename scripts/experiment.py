@@ -522,7 +522,7 @@ def launch(args):
     root = Path(os.environ.get("REPO_PATH", os.environ.get("SLURM_SUBMIT_DIR", Path(__file__).resolve().parents[1]))).resolve()
     environment = os.environ.copy()
     environment["REPO_PATH"] = str(root)
-    for name, default in (("MODE", "offline"), ("PROJECT", "seg-opt"), ("GROUP", Path(config).stem)):
+    for name, default in (("MODE", "offline"), ("PROJECT", "seg-opt"), ("RUN_GROUP", Path(config).stem)):
         key = "WANDB_" + name
         value = environment.setdefault(key, default)
         for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
