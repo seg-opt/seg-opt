@@ -14,6 +14,20 @@ class DistillationLossResult:
     components: Mapping[str, torch.Tensor]
 
 
+_KD_COMPONENT_KEYS = (
+    "raw_body", "raw_edge", "weighted_body",
+    "weighted_edge", "raw_vanilla", "weighted_vanilla",
+)
+
+
+def _kd_result(total: torch.Tensor, **overrides: torch.Tensor) -> DistillationLossResult:
+    zero = total * 0
+    return DistillationLossResult(
+        total=total,
+        components={key: overrides.get(key, zero) for key in _KD_COMPONENT_KEYS},
+    )
+
+
 @dataclass(frozen=True)
 class BoundaryMasks:
     """Soft per-class edge masks and valid output locations."""
@@ -367,18 +381,7 @@ class BPKDLoss(nn.Module):
             ignore_index=self.ignore_index,
         )
         if not self.enabled:
-            zero = student_logits.sum() * 0
-            return DistillationLossResult(
-                total=zero,
-                components={
-                    "raw_body": zero,
-                    "raw_edge": zero,
-                    "weighted_body": zero,
-                    "weighted_edge": zero,
-                    "raw_vanilla": zero,
-                    "weighted_vanilla": zero,
-                },
-            )
+            return _kd_result(student_logits.sum() * 0)
         student, teacher, _ = _prepared_logits(
             student_logits,
             teacher_logits,
@@ -398,17 +401,12 @@ class BPKDLoss(nn.Module):
         weighted_body = raw_body * self.body_weight
         weighted_edge = raw_edge * self.edge_weight
         total = weighted_body + weighted_edge
-        zero = total * 0
-        return DistillationLossResult(
-            total=total,
-            components={
-                "raw_body": raw_body,
-                "raw_edge": raw_edge,
-                "weighted_body": weighted_body,
-                "weighted_edge": weighted_edge,
-                "raw_vanilla": zero,
-                "weighted_vanilla": zero,
-            },
+        return _kd_result(
+            total,
+            raw_body=raw_body,
+            raw_edge=raw_edge,
+            weighted_body=weighted_body,
+            weighted_edge=weighted_edge,
         )
 
 
@@ -461,18 +459,7 @@ class PixelWiseKDLoss(nn.Module):
             ignore_index=self.ignore_index,
         )
         if not self.enabled:
-            zero = student_logits.sum() * 0
-            return DistillationLossResult(
-                total=zero,
-                components={
-                    "raw_body": zero,
-                    "raw_edge": zero,
-                    "weighted_body": zero,
-                    "weighted_edge": zero,
-                    "raw_vanilla": zero,
-                    "weighted_vanilla": zero,
-                },
-            )
+            return _kd_result(student_logits.sum() * 0)
         student, teacher, valid = _prepared_logits(
             student_logits,
             teacher_logits,
@@ -488,15 +475,8 @@ class PixelWiseKDLoss(nn.Module):
             student.sum() * 0,
         )
         weighted_vanilla = raw_vanilla * self.weight
-        zero = weighted_vanilla * 0
-        return DistillationLossResult(
-            total=weighted_vanilla,
-            components={
-                "raw_body": zero,
-                "raw_edge": zero,
-                "weighted_body": zero,
-                "weighted_edge": zero,
-                "raw_vanilla": raw_vanilla,
-                "weighted_vanilla": weighted_vanilla,
-            },
+        return _kd_result(
+            weighted_vanilla,
+            raw_vanilla=raw_vanilla,
+            weighted_vanilla=weighted_vanilla,
         )
