@@ -11,8 +11,6 @@ _STAGES = ("train", "val", "test")
 
 
 class SegmentationMetrics(nn.Module):
-    """Accumulate target-by-prediction confusion matrices for segmentation."""
-
     def __init__(
         self,
         class_names: Sequence[str],
@@ -170,7 +168,6 @@ class SegmentationMetrics(nn.Module):
         self,
         stage: str,
     ) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
-        """Return scalar metrics and a synchronized confusion-matrix snapshot."""
         confusion = self._synchronized(self._confusion(stage))
         metrics = self._metrics_from_confusion(confusion, self.class_names)
         if self.trimap_kernel_size is not None:
@@ -184,7 +181,6 @@ class SegmentationMetrics(nn.Module):
         return metrics, confusion
 
     def serializable(self, stage: str) -> dict[str, Any]:
-        """Return JSON-safe metrics, including the target-by-prediction matrix."""
         metrics, confusion = self.snapshot(stage)
         return {
             **{name: float(value.detach().cpu()) for name, value in metrics.items()},

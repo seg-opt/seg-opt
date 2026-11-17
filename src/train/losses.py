@@ -13,7 +13,6 @@ def _macro_dice_loss(
     ignore_index: int,
     eps: float,
 ) -> torch.Tensor:
-    """Compute weighted macro Dice loss from segmentation logits."""
     probabilities = logits.softmax(dim=1)
     valid = targets != ignore_index
     safe_targets = targets.masked_fill(~valid, 0)
