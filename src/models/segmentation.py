@@ -22,6 +22,8 @@ class FeatureTap:
 
 
 class SemanticSegmenter(nn.Module):
+    """Common interface implemented by every supervised baseline."""
+
     def __init__(self, class_names: Sequence[str]) -> None:
         super().__init__()
         if not class_names:
@@ -45,11 +47,18 @@ class SemanticSegmenter(nn.Module):
         return criterion(scores, labels), scores
 
     def to_distillation_logits(self, scores: torch.Tensor) -> torch.Tensor:
+        """Convert model scores to class potentials suitable for KL distillation.
+
+        Most canonical segmenters already return unconstrained dense logits.
+        Query-based models can override this without changing their inference
+        scores or native supervised objective.
+        """
         if scores.ndim != 4 or scores.shape[1] != self.num_classes:
             raise ValueError("scores must have shape [B, classes, H, W]")
         return scores
 
     def distillation_feature_tap(self) -> FeatureTap:
+        """Return the dense pre-classifier features used by feature distillation."""
         raise NotImplementedError(
             f"{type(self).__name__} does not expose distillation features"
         )
@@ -239,6 +248,8 @@ class SegFormerSegmenter(SemanticSegmenter):
 
 
 class Mask2FormerSegmenter(SemanticSegmenter):
+    """Semantic wrapper retaining Mask2Former's native matching objective."""
+
     def __init__(
         self,
         model: nn.Module,
