@@ -46,7 +46,6 @@ class _CapturedFeatures:
 
 @contextmanager
 def capture_features(model: nn.Module) -> Iterator[_CapturedFeatures]:
-    """Record the model's distillation feature map during forwards in scope."""
     tap_getter = getattr(model, "distillation_feature_tap", None)
     if not callable(tap_getter):
         raise TypeError("model must implement distillation_feature_tap for SARD")
@@ -146,9 +145,7 @@ def structure_weights(
     density_weight: float = 1.0,
     density_radius: int = 7,
 ) -> torch.Tensor:
-    """Return ``W``: non-negative ``[B, H, W]`` weights summing to one per image.
-
-    Ignored locations receive zero weight.  With every beta at zero the map is
+    """Ignored locations receive zero weight.  With every beta at zero the map is
     uniform over valid locations, which is the paper's ``W(i) = 1`` ablation.
     """
     if valid.ndim != 3:
@@ -177,8 +174,6 @@ def _standardized(features: torch.Tensor) -> torch.Tensor:
 
 
 class SARDLoss(nn.Module):
-    """Structure-weighted feature consistency plus distribution alignment."""
-
     requires_features = True
 
     def __init__(

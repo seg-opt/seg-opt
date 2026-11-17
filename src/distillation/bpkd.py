@@ -8,8 +8,6 @@ from torch.nn import functional as F
 
 @dataclass(frozen=True)
 class DistillationLossResult:
-    """A scalar distillation objective and detached-name-friendly components."""
-
     total: torch.Tensor
     components: Mapping[str, torch.Tensor]
 
@@ -30,8 +28,6 @@ def _kd_result(total: torch.Tensor, **overrides: torch.Tensor) -> DistillationLo
 
 @dataclass(frozen=True)
 class BoundaryMasks:
-    """Soft per-class edge masks and valid output locations."""
-
     edge: torch.Tensor
     valid: torch.Tensor
 
@@ -41,7 +37,6 @@ class BoundaryMasks:
 
 
 def _same_max_pool(inputs: torch.Tensor, kernel_size: int) -> torch.Tensor:
-    """Square, replicate-padded max-pooling with unchanged spatial shape."""
     padding = kernel_size // 2
     return F.max_pool2d(
         F.pad(inputs, (padding, padding, padding, padding), mode="replicate"),
