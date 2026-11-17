@@ -19,7 +19,7 @@ metrics: {trimap_kernel_size: 7}
 
 training:
   output_dir: results/baselines_benchmark/segformer_b4/seed42
-  epochs: 20
+  epochs: 80
   batch_size: 2
   accumulate_grad_batches: 8
   learning_rate: 3.0e-4
