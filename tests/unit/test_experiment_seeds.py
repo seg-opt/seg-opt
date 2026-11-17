@@ -4,7 +4,20 @@ import re
 from src.utils.utils import load_config, load_yaml
 
 
-REPLICA_SEEDS = {}
+REPLICA_SEEDS = {
+    "experiments/logit_distillation/b4_to_b0_lunar_80e/seed43.yaml": 43,
+    "experiments/logit_distillation/b4_to_b0_lunar_80e/seed44.yaml": 44,
+    "experiments/logit_distillation/b4_to_b1_lunar_80e/seed43.yaml": 43,
+    "experiments/logit_distillation/b4_to_b1_lunar_80e/seed44.yaml": 44,
+    "experiments/logit_distillation/b4_to_b2_lunar_80e/seed43.yaml": 43,
+    "experiments/logit_distillation/b4_to_b2_lunar_80e/seed44.yaml": 44,
+    "experiments/sard/ade20k/fast_scnn_sard_full_seed43.yaml": 43,
+    "experiments/sard/ade20k/fast_scnn_sard_full_seed44.yaml": 44,
+    "experiments/sard/cityscapes/fast_scnn_sard_full_seed43.yaml": 43,
+    "experiments/sard/cityscapes/fast_scnn_sard_full_seed44.yaml": 44,
+    "experiments/sard/fast_scnn_sard_full_from_segformer_b4_seed43.yaml": 43,
+    "experiments/sard/fast_scnn_sard_full_from_segformer_b4_seed44.yaml": 44,
+}
 
 
 def test_training_configs_use_seed42_except_explicit_named_replicas():
