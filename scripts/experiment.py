@@ -502,7 +502,7 @@ def compare(paths):
                             "weight_decay", "warmup_fraction", "backbone_learning_rate"):
                     if settings.get("training", {}).get(key) != reference_protocol.get("training", {}).get(key):
                         report["warnings"].append(f"{directory}: training {key} differs")
-                for key in ("data", "loss", "distillation", "metrics"):
+                for key in ("model", "data", "loss", "distillation", "metrics"):
                     if settings.get(key) != reference_protocol.get(key):
                         report["warnings"].append(f"{directory}: {key} protocol differs")
         else:
