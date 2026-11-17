@@ -222,6 +222,8 @@ in each study's audited `analysis.json`. The fixed split SHA256 is
 `e7486b858ee776695b9e5fbdd561ac072e37999d59e801e406c8a299d778c8ab`.
 Per-study receipts retain artifact hashes, run/job IDs and resolved config
 provenance without requiring a particular account or artifact-root path.
+Reported mIoU deltas use the unrounded receipt values, not differences of the
+rounded table entries.
 
 ### Paired ResNet34 Vanilla KD
 
