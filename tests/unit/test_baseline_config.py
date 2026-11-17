@@ -453,3 +453,23 @@ def test_artifact_helpers_return_json_native_values(tmp_path):
     assert parameter_counts(model) == {"total": 26, "trainable": 10}
     assert to_builtin(contents)["metric"] == pytest.approx(0.75)
     assert '"confusion": [' in destination.read_text(encoding="utf-8")
+
+
+def test_standalone_lusnar_configuration(tmp_path):
+    config = load_config("experiments/lusnar/segformer_b0.yaml")
+    assert config.data.dataset == "lusnar"
+    assert config.data.class_names == ("regolith", "crater", "rock", "mountain", "sky")
+    assert config.num_classes == 5
+    assert config.data.mask_variant == "ground"
+    assert (config.data.image_height, config.data.image_width) == (512, 512)
+    assert config.training.seed == 42
+    assert config.training.epochs == 20
+    assert config.distillation is None
+    assert Path(config.training.output_dir).parts[-4:] == ("results", "lusnar", "segformer_b0", "seed42")
+    resolved_path = tmp_path / "lusnar.yaml"
+    write_resolved_config(config, resolved_path)
+    assert load_config(resolved_path) == config
+    with pytest.raises(ValueError, match="class_names must be ordered"):
+        replace(config.data, class_names=tuple(reversed(config.data.class_names)))
+    with pytest.raises(ValueError, match="only supports mask_variant"):
+        replace(config.data, mask_variant="clean")
