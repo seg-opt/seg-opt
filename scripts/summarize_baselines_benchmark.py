@@ -34,12 +34,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _metrics_path(results_root: Path, name: str) -> Path:
-    return results_root / name / "seed42" / "metrics.json"
-
-
 def load_metrics(results_root: Path, name: str) -> dict[str, Any]:
-    path = _metrics_path(results_root, name)
+    path = results_root / name / "seed42" / "metrics.json"
     if not path.is_file():
         raise FileNotFoundError(f"missing completed benchmark metrics: {path}")
     with path.open(encoding="utf-8") as file:
