@@ -173,7 +173,6 @@ def _build_dinov3_mask2former(
     pixel_level_module.encoder = DINOv3PyramidBackbone(
         backbone,
         output_channels,
-        freeze_backbone=True,
     )
     return DINOv3Mask2FormerSegmenter(
         model,
