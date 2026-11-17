@@ -48,6 +48,9 @@ class DINOv3PyramidBackbone(nn.Module):
         self,
         backbone: nn.Module,
         output_channels: Sequence[int],
+        *,
+        layer_indices: Sequence[int] | None = None,
+        freeze_backbone: bool = True,
     ) -> None:
         super().__init__()
         config = backbone.config
@@ -55,16 +58,26 @@ class DINOv3PyramidBackbone(nn.Module):
             raise ValueError("DINOv3PyramidBackbone requires a DINOv3 ViT")
         if len(output_channels) != len(self.strides):
             raise ValueError("Mask2Former requires four pyramid channel counts")
+        if not freeze_backbone:
+            raise ValueError("the initial DINOv3 Mask2Former teacher freezes DINOv3")
 
         hidden_layers = int(config.num_hidden_layers)
-        layer_indices = tuple(
-            hidden_layers * position // len(self.strides)
-            for position in range(1, len(self.strides) + 1)
-        )
+        if layer_indices is None:
+            layer_indices = tuple(
+                hidden_layers * position // len(self.strides)
+                for position in range(1, len(self.strides) + 1)
+            )
+        if len(layer_indices) != len(self.strides):
+            raise ValueError("provide exactly four DINOv3 layer indices")
+        if any(index < 1 or index > hidden_layers for index in layer_indices):
+            raise ValueError(
+                f"DINOv3 layer indices must be between 1 and {hidden_layers}"
+            )
 
         self.backbone = backbone
         self.backbone.requires_grad_(False)
         self.backbone.eval()
+        self.freeze_backbone = True
         self.patch_size = int(config.patch_size)
         self.num_prefix_tokens = 1 + int(config.num_register_tokens)
         self.hidden_size = int(config.hidden_size)
@@ -153,9 +166,41 @@ class DINOv3PyramidBackbone(nn.Module):
 class DINOv3Mask2FormerSegmenter(Mask2FormerSegmenter):
     """Mask2Former semantic model backed by a frozen DINOv3 feature pyramid."""
 
+    @property
+    def pyramid_backbone(self) -> DINOv3PyramidBackbone:
+        return self.model.model.pixel_level_module.encoder
+
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
         return (
             parameter
-            for parameter in self.model.model.pixel_level_module.encoder.backbone.parameters()
+            for parameter in self.pyramid_backbone.backbone.parameters()
             if parameter.requires_grad
         )
+
+    @staticmethod
+    def _feature_stage_index(stage: int) -> int:
+        index = stage if stage >= 0 else len(DINOv3PyramidBackbone.strides) + stage
+        if not 0 <= index < len(DINOv3PyramidBackbone.strides):
+            raise ValueError("DINOv3 Mask2Former feature stage must be in [-4, 3]")
+        return index
+
+    def feature_channels_at(self, stage: int) -> int:
+        return self.pyramid_backbone.channels[self._feature_stage_index(stage)]
+
+    def feature_stride_at(self, stage: int) -> int:
+        return self.pyramid_backbone.strides[self._feature_stage_index(stage)]
+
+    def scores_and_features(
+        self,
+        pixel_values: torch.Tensor,
+        feature_stage: int = -1,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        outputs = self.model(
+            pixel_values=pixel_values,
+            output_hidden_states=True,
+        )
+        if outputs.encoder_hidden_states is None:
+            raise RuntimeError("Mask2Former did not return encoder feature maps")
+        stage_index = self._feature_stage_index(feature_stage)
+        scores = self._scores_from_outputs(outputs, pixel_values.shape[-2:])
+        return scores, outputs.encoder_hidden_states[stage_index]

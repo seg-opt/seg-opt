@@ -22,6 +22,8 @@ class FeatureTap:
 
 
 class SemanticSegmenter(nn.Module):
+    """Common interface implemented by every supervised baseline."""
+
     def __init__(self, class_names: Sequence[str]) -> None:
         super().__init__()
         if not class_names:
@@ -45,14 +47,49 @@ class SemanticSegmenter(nn.Module):
         return criterion(scores, labels), scores
 
     def to_distillation_logits(self, scores: torch.Tensor) -> torch.Tensor:
+        """Convert model scores to class potentials suitable for KL distillation.
+
+        Most canonical segmenters already return unconstrained dense logits.
+        Query-based models can override this without changing their inference
+        scores or native supervised objective.
+        """
         if scores.ndim != 4 or scores.shape[1] != self.num_classes:
             raise ValueError("scores must have shape [B, classes, H, W]")
         return scores
 
     def distillation_feature_tap(self) -> FeatureTap:
+        """Return the dense pre-classifier features used by feature distillation."""
         raise NotImplementedError(
             f"{type(self).__name__} does not expose distillation features"
         )
+
+
+def make_segmentation_head(  # noqa: PLR0913
+    in_channels: int,
+    num_classes: int,
+    head_type: str = "linear",
+    batch_norm: bool = True,
+    hidden_channels: int = 256,
+    dropout: float = 0.1,
+) -> nn.Module:
+    if head_type == "linear":
+        layers: list[nn.Module] = []
+        if batch_norm:
+            layers.append(nn.BatchNorm2d(in_channels))
+        layers.append(nn.Conv2d(in_channels, num_classes, kernel_size=1))
+        return nn.Sequential(*layers)
+    if head_type == "lightweight":
+        groups = min(32, hidden_channels)
+        while hidden_channels % groups:
+            groups -= 1
+        return nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.GroupNorm(groups, hidden_channels),
+            nn.GELU(),
+            nn.Dropout2d(dropout),
+            nn.Conv2d(hidden_channels, num_classes, kernel_size=1),
+        )
+    raise ValueError(f"unsupported segmentation head {head_type!r}")
 
 
 class DINOv3Segmenter(SemanticSegmenter):
@@ -61,6 +98,11 @@ class DINOv3Segmenter(SemanticSegmenter):
         backbone: nn.Module,
         num_classes: int,
         freeze_backbone: bool = True,
+        head_type: str = "linear",
+        head_batch_norm: bool = True,
+        head_hidden_channels: int = 256,
+        head_dropout: float = 0.1,
+        unfreeze_last_blocks: int = 0,
         class_names: Sequence[str] | None = None,
     ) -> None:
         super().__init__(
@@ -70,6 +112,7 @@ class DINOv3Segmenter(SemanticSegmenter):
             raise ValueError("num_classes must match the length of class_names")
         self.backbone = backbone
         self.freeze_backbone = freeze_backbone
+        self.unfreeze_last_blocks = unfreeze_last_blocks
 
         config = backbone.config
         self.backbone_type = config.model_type
@@ -77,16 +120,36 @@ class DINOv3Segmenter(SemanticSegmenter):
             self.in_channels = config.hidden_size
             self.patch_size = config.patch_size
             self.num_prefix_tokens = 1 + config.num_register_tokens
+        elif self.backbone_type == "dinov3_convnext":
+            self.in_channels = config.hidden_sizes[-1]
         else:
             raise ValueError(f"unsupported DINOv3 backbone {self.backbone_type!r}")
 
-        self.classifier = nn.Sequential(
-            nn.BatchNorm2d(self.in_channels),
-            nn.Conv2d(self.in_channels, self.num_classes, kernel_size=1),
+        self.classifier = make_segmentation_head(
+            self.in_channels,
+            self.num_classes,
+            head_type=head_type,
+            batch_norm=head_batch_norm,
+            hidden_channels=head_hidden_channels,
+            dropout=head_dropout,
         )
         if freeze_backbone:
             self.backbone.requires_grad_(False)
+            if unfreeze_last_blocks:
+                self._unfreeze_last_blocks(unfreeze_last_blocks)
             self.backbone.eval()
+
+    def _unfreeze_last_blocks(self, count: int) -> None:
+        layers = getattr(self.backbone, "layer", None)
+        if layers is None:
+            raise ValueError("this DINOv3 backbone does not expose transformer blocks")
+        if not 0 < count <= len(layers):
+            raise ValueError(f"unfreeze_last_blocks must be between 0 and {len(layers)}")
+        for layer in layers[-count:]:
+            layer.requires_grad_(True)
+        norm = getattr(self.backbone, "norm", None)
+        if norm is not None:
+            norm.requires_grad_(True)
 
     def distillation_feature_tap(self) -> FeatureTap:
         return FeatureTap(self.classifier, self.in_channels, use_input=True)
@@ -128,9 +191,25 @@ class DINOv3Segmenter(SemanticSegmenter):
             grid_width,
         )
 
+    def _convnext_features(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        with self._backbone_context():
+            outputs = self.backbone(
+                pixel_values=pixel_values,
+                output_hidden_states=True,
+            )
+        features = outputs.hidden_states[-1]
+        if features.ndim != 4:
+            raise ValueError(
+                "DINOv3 ConvNeXt backbone did not return a spatial feature map"
+            )
+        return features
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         output_size = pixel_values.shape[-2:]
-        features = self._vit_features(pixel_values)
+        if self.backbone_type == "dinov3_vit":
+            features = self._vit_features(pixel_values)
+        else:
+            features = self._convnext_features(pixel_values)
 
         logits = self.classifier(features)
         return F.interpolate(
@@ -169,6 +248,8 @@ class SegFormerSegmenter(SemanticSegmenter):
 
 
 class Mask2FormerSegmenter(SemanticSegmenter):
+    """Semantic wrapper retaining Mask2Former's native matching objective."""
+
     def __init__(
         self,
         model: nn.Module,

@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from src.models.segmentation import make_segmentation_head
 from src.train.losses import SegmentationLoss
 from src.utils.utils import load_config
 
@@ -59,6 +60,18 @@ def test_segmentation_loss_uses_dice_eps(dice_eps):
 
     assert loss.dice_eps == eps
     torch.testing.assert_close(actual, torch.tensor(1 - 0.5 / (1.5 + eps)))
+
+
+@pytest.mark.parametrize("head_type", ["linear", "lightweight"])
+def test_configurable_segmentation_heads_preserve_spatial_shape(head_type):
+    head = make_segmentation_head(
+        in_channels=12,
+        num_classes=4,
+        head_type=head_type,
+        hidden_channels=18,
+    )
+
+    assert head(torch.randn(2, 12, 8, 9)).shape == (2, 4, 8, 9)
 
 
 def test_benchmark_dinov3_config_is_a_full_frame_frozen_linear_probe():
