@@ -495,7 +495,13 @@ def compare(paths):
             if reference["data"] != metrics["data"]:
                 report["warnings"].append(f"{directory}: data/split protocol differs")
             for key in ("teacher", "method", "settings"):
-                if (reference.get("distillation") or {}).get(key) != (metrics.get("distillation") or {}).get(key):
+                previous = (reference.get("distillation") or {}).get(key)
+                current = (metrics.get("distillation") or {}).get(key)
+                if key == "teacher":
+                    hashes = ("config_sha256", "checkpoint_sha256")
+                    previous = {name: previous.get(name) for name in hashes} if previous is not None else None
+                    current = {name: current.get(name) for name in hashes} if current is not None else None
+                if previous != current:
                     report["warnings"].append(f"{directory}: distillation {key} differs")
             if settings is not None and reference_protocol is not None:
                 for key in ("batch_size", "accumulate_grad_batches", "epochs", "learning_rate", "precision", "seed",
@@ -503,7 +509,12 @@ def compare(paths):
                     if settings.get("training", {}).get(key) != reference_protocol.get("training", {}).get(key):
                         report["warnings"].append(f"{directory}: training {key} differs")
                 for key in ("model", "data", "loss", "distillation", "metrics"):
-                    if settings.get(key) != reference_protocol.get(key):
+                    previous = reference_protocol.get(key)
+                    current = settings.get(key)
+                    if key == "distillation":
+                        previous = {name: value for name, value in (previous or {}).items() if name != "teacher"}
+                        current = {name: value for name, value in (current or {}).items() if name != "teacher"}
+                    if previous != current:
                         report["warnings"].append(f"{directory}: {key} protocol differs")
         else:
             reference = metrics
