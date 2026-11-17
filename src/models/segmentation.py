@@ -77,6 +77,8 @@ class DINOv3Segmenter(SemanticSegmenter):
             self.in_channels = config.hidden_size
             self.patch_size = config.patch_size
             self.num_prefix_tokens = 1 + config.num_register_tokens
+        elif self.backbone_type == "dinov3_convnext":
+            self.in_channels = config.hidden_sizes[-1]
         else:
             raise ValueError(f"unsupported DINOv3 backbone {self.backbone_type!r}")
 
@@ -128,9 +130,25 @@ class DINOv3Segmenter(SemanticSegmenter):
             grid_width,
         )
 
+    def _convnext_features(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        with self._backbone_context():
+            outputs = self.backbone(
+                pixel_values=pixel_values,
+                output_hidden_states=True,
+            )
+        features = outputs.hidden_states[-1]
+        if features.ndim != 4:
+            raise ValueError(
+                "DINOv3 ConvNeXt backbone did not return a spatial feature map"
+            )
+        return features
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         output_size = pixel_values.shape[-2:]
-        features = self._vit_features(pixel_values)
+        if self.backbone_type == "dinov3_vit":
+            features = self._vit_features(pixel_values)
+        else:
+            features = self._convnext_features(pixel_values)
 
         logits = self.classifier(features)
         return F.interpolate(
