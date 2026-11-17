@@ -18,8 +18,6 @@ def _group_count(channels: int) -> int:
 
 
 class PyramidProjection(nn.Sequential):
-    """Project one ViT token grid before resizing it into a feature pyramid."""
-
     def __init__(self, input_channels: int, output_channels: int) -> None:
         super().__init__(
             nn.Conv2d(input_channels, output_channels, kernel_size=1, bias=False),

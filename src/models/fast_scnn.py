@@ -193,8 +193,6 @@ class Classifier(nn.Sequential):
 
 
 class FastSCNN(SemanticSegmenter):
-    """Fast-SCNN semantic segmenter with a single full-resolution output."""
-
     def __init__(
         self,
         num_classes: int,

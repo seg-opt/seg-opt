@@ -179,7 +179,6 @@ def load_model(
     decoder_model_id: str | None = None,
     ignore_index: int = 255,
 ) -> SemanticSegmenter:
-    """Build one of the supervised segmentation benchmark models."""
     if model_name not in BASELINE_MODEL_NAMES:
         allowed = ", ".join(BASELINE_MODEL_NAMES)
         raise ValueError(f"unsupported baseline {model_name!r}; choose one of: {allowed}")
