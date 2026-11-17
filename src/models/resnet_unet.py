@@ -50,18 +50,24 @@ class DecoderBlock(nn.Module):
         return self.convolutions(torch.cat((inputs, skip), dim=1))
 
 
-class ResNet34UNet(SemanticSegmenter):
-    """ResNet34 encoder with a four-stage skip-connected U-Net decoder."""
+class ResNetUNet(SemanticSegmenter):
+    """ResNet encoder with a four-stage skip-connected U-Net decoder."""
 
-    def __init__(self, encoder: nn.Module, class_names: Sequence[str]) -> None:
+    def __init__(
+        self,
+        encoder: nn.Module,
+        class_names: Sequence[str],
+        encoder_channels: tuple[int, int, int, int, int],
+    ) -> None:
         super().__init__(class_names)
         encoder.avgpool = nn.Identity()
         encoder.fc = nn.Identity()
         self.encoder = encoder
-        self.decoder4 = DecoderBlock(512, 256, 256)
-        self.decoder3 = DecoderBlock(256, 128, 128)
-        self.decoder2 = DecoderBlock(128, 64, 64)
-        self.decoder1 = DecoderBlock(64, 64, 32)
+        stem_channels, layer1_channels, layer2_channels, layer3_channels, layer4_channels = encoder_channels
+        self.decoder4 = DecoderBlock(layer4_channels, layer3_channels, 256)
+        self.decoder3 = DecoderBlock(256, layer2_channels, 128)
+        self.decoder2 = DecoderBlock(128, layer1_channels, 64)
+        self.decoder1 = DecoderBlock(64, stem_channels, 32)
         self.classifier = nn.Conv2d(32, self.num_classes, kernel_size=1)
         self._initialize_decoder()
 
@@ -115,3 +121,13 @@ class ResNet34UNet(SemanticSegmenter):
             mode="bilinear",
             align_corners=False,
         )
+
+
+class ResNet34UNet(ResNetUNet):
+    def __init__(self, encoder: nn.Module, class_names: Sequence[str]) -> None:
+        super().__init__(encoder, class_names, (64, 64, 128, 256, 512))
+
+
+class ResNet101UNet(ResNetUNet):
+    def __init__(self, encoder: nn.Module, class_names: Sequence[str]) -> None:
+        super().__init__(encoder, class_names, (64, 256, 512, 1024, 2048))

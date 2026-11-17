@@ -8,6 +8,7 @@ import yaml
 BaselineName = Literal[
     "fast_scnn",
     "resnet34_unet",
+    "resnet101_unet",
     "segformer_b0",
     "segformer_b1",
     "segformer_b2",
@@ -20,6 +21,7 @@ BaselineName = Literal[
 BASELINE_NAMES = {
     "fast_scnn",
     "resnet34_unet",
+    "resnet101_unet",
     "segformer_b0",
     "segformer_b1",
     "segformer_b2",

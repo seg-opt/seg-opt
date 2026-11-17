@@ -55,6 +55,21 @@ def test_resolved_configuration_round_trip(tmp_path):
     assert load_config(resolved_path) == config
 
 
+def test_resnet101_teacher_preserves_resnet34_training_protocol():
+    larger = load_config("experiments/baselines_benchmark/resnet101_unet.yaml")
+    previous = load_config("experiments/baselines_benchmark/resnet34_unet.yaml")
+
+    assert larger.model.model_id == "resnet101"
+    assert larger.model.pretrained
+    assert larger.data == previous.data
+    assert larger.loss == previous.loss
+    assert larger.metrics == previous.metrics
+    assert replace(
+        larger.training, output_dir=previous.training.output_dir
+    ) == previous.training
+    assert larger.training.output_dir != previous.training.output_dir
+
+
 def test_distillation_configuration_is_validated_and_round_trips(tmp_path):
     config_path = tmp_path / "bpkd.yaml"
     config_path.write_text(
