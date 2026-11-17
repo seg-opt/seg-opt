@@ -7,7 +7,7 @@ from src.utils.utils import load_config
 
 
 def test_configured_real_dataset_and_print_entries():
-    """Validate the real dataset; run pytest with -s to display sample summaries."""
+    """Validate the real dataset."""
     config = load_config("experiments/baselines_benchmark/resnet34_unet.yaml").data
     root = Path(config.dataset_root)
 
@@ -26,16 +26,10 @@ def test_configured_real_dataset_and_print_entries():
     }
     indexed = {image.stem[-4:]: (image, mask) for image, mask in pairs}
 
-    for index, frame_id in enumerate(manifest.train_ids[:3]):
+    for frame_id in manifest.train_ids[:3]:
         pair = indexed[frame_id]
         image, labels = _decode_pair(pair)
-        classes, counts = np.unique(labels, return_counts=True)
+        classes = np.unique(labels)
         assert image.shape == (480, 720, 3)
         assert labels.shape == (480, 720)
         assert set(classes).issubset({0, 1, 2, 3})
-        print(
-            f"entry {index}: image={pair[0].name}, mask={pair[1].name}, "
-            f"image_shape={image.shape}, image_range=({image.min()}, {image.max()}), "
-            f"label_shape={labels.shape}, "
-            f"class_counts={dict(zip(classes.tolist(), counts.tolist()))}"
-        )
