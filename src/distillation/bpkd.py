@@ -303,6 +303,10 @@ class BPKDLoss(nn.Module):
             persistent=False,
         )
 
+    @property
+    def enabled(self) -> bool:
+        return bool(self.body_weight or self.edge_weight)
+
     def _body_loss(
         self,
         student_logits: torch.Tensor,
@@ -371,7 +375,7 @@ class BPKDLoss(nn.Module):
             num_classes=self.num_classes,
             ignore_index=self.ignore_index,
         )
-        if not (self.body_weight or self.edge_weight):
+        if not self.enabled:
             return _kd_result(student_logits.sum() * 0)
         student, teacher, _ = _prepared_logits(
             student_logits,
@@ -428,6 +432,10 @@ class PixelWiseKDLoss(nn.Module):
         self.spatial_stride = spatial_stride
         self.ignore_index = ignore_index
 
+    @property
+    def enabled(self) -> bool:
+        return bool(self.weight)
+
     def forward(
         self,
         student_logits: torch.Tensor,
@@ -445,7 +453,7 @@ class PixelWiseKDLoss(nn.Module):
             num_classes=self.num_classes,
             ignore_index=self.ignore_index,
         )
-        if not self.weight:
+        if not self.enabled:
             return _kd_result(student_logits.sum() * 0)
         student, teacher, valid = _prepared_logits(
             student_logits,
