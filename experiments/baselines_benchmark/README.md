@@ -1,8 +1,9 @@
 # Baselines benchmark
 
 This is the single active experiment stage before any distillation work. It
-trains one Fast-SCNN student and four independent teacher candidates on exactly
-the same clean masks, aligned seed-42 split, 512x768 frames, augmentations,
+trains one Fast-SCNN student and the independent teacher candidates in the
+[experiment map](../README.md#clean-baseline-benchmark). All use the same clean
+masks, aligned seed-42 split, 512x768 frames, augmentations,
 loss, and 80-epoch budget. The only model-specific settings are initialization
 and the learning-rate/batch configuration already used by the canonical
 baselines.

@@ -307,9 +307,10 @@ canonical paths above and the snapshot-owned runner. Set
 `WANDB_ENTITY=ogrodowskijedrzej-put`, project `seg-opt`, and the appropriate logging
 mode; credentials stay on HPC. Pass
 `--seed` to `submit` or `pipeline`, not a new epoch-specific config copy. For
-adopted teacher artifacts, connect `pipeline --after-job` to a successful
-completion barrier for both the teacher and paired supervised baseline. Do not
-depend only on the teacher or bypass the validation gate. BPKD/SARD calibration
+adopted teacher artifacts, point `pipeline --after-job JOB_ID` at one successful
+completion barrier depending on both the teacher and paired supervised baseline.
+The option accepts one JOB_ID, not a list. Do not depend only on the teacher or
+bypass the validation gate. BPKD/SARD calibration
 is not part of this completed campaign and has not been submitted.
 
 ## Validation-only Transfer Diagnosis (2026-11-10)
