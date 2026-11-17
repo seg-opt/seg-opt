@@ -116,7 +116,7 @@ Family sbatch files call `scripts/train.sbatch` directly.
 
 ## Controlled CNN Vanilla Protocol
 
-The canonical CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
+The CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
 Fast-SCNN using vanilla logit KD:
 
 | Teacher | Config relative to experiments/ |
@@ -133,13 +133,11 @@ stride-8 loss grid; this grid is not the student's output resolution.
 Teacher config/checkpoint references and student output directories are
 distinct for each teacher. Only student weights are needed at inference.
 
-Use the shared `pipeline` interface with completed, hash-verified supervised
-student and teacher artifacts. Its validation mIoU and small-rock IoU gate
-must pass before KD; test scores are reporting only. Student seed overrides
+Run with `pipeline`. Student seed overrides
 43 and 44 leave the split and seed-42 teacher fixed. Batch 8 with accumulation
 2 is not BatchNorm-equivalent to physical batch 16, so SegFormer runs using
 that setting are not controlled CNN loss comparisons. The historical results
-below used 20 epochs; current canonical YAMLs use 80. Compare only matched
+below used 20 epochs; current YAMLs use 80. Compare only matched
 training budgets and preserve the original resolved configs on HPC.
 
 ## CNN BPKD/SARD pilot
