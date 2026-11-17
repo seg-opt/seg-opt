@@ -483,6 +483,19 @@ class ExperimentRunnerTests(unittest.TestCase):
                              for warning in report["warnings"]), 2)
         self.assertFalse(any("batch_size" in warning for warning in report["warnings"]))
 
+    def test_compare_warns_on_each_model_protocol_difference(self):
+        model = {"name": "fast_scnn", "model_id": None,
+                 "pretrained": False, "freeze_backbone": False}
+        baseline = self.artifact("baseline", settings={"training": {}, "model": model})
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for field, value in (("name", "segformer_b0"), ("model_id", "nvidia/mit-b0"),
+                             ("pretrained", True), ("freeze_backbone", True)):
+            artifact = self.artifact(field, settings={"training": {}, "model": {**model, field: value}})
+            with self.subTest(field=field), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare([baseline, artifact])
+                self.assertEqual(report["warnings"], [f"{artifact}: model protocol differs"])
+
     def test_compare_warns_on_each_optimizer_protocol_difference(self):
         training = {"batch_size": 16, "accumulate_grad_batches": 1, "epochs": 20,
                     "learning_rate": 0.0005, "precision": "bf16", "seed": 42,
