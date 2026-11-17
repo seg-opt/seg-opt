@@ -48,6 +48,9 @@ class DINOv3PyramidBackbone(nn.Module):
         self,
         backbone: nn.Module,
         output_channels: Sequence[int],
+        *,
+        layer_indices: Sequence[int] | None = None,
+        freeze_backbone: bool = True,
     ) -> None:
         super().__init__()
         config = backbone.config
@@ -55,16 +58,26 @@ class DINOv3PyramidBackbone(nn.Module):
             raise ValueError("DINOv3PyramidBackbone requires a DINOv3 ViT")
         if len(output_channels) != len(self.strides):
             raise ValueError("Mask2Former requires four pyramid channel counts")
+        if not freeze_backbone:
+            raise ValueError("the initial DINOv3 Mask2Former teacher freezes DINOv3")
 
         hidden_layers = int(config.num_hidden_layers)
-        layer_indices = tuple(
-            hidden_layers * position // len(self.strides)
-            for position in range(1, len(self.strides) + 1)
-        )
+        if layer_indices is None:
+            layer_indices = tuple(
+                hidden_layers * position // len(self.strides)
+                for position in range(1, len(self.strides) + 1)
+            )
+        if len(layer_indices) != len(self.strides):
+            raise ValueError("provide exactly four DINOv3 layer indices")
+        if any(index < 1 or index > hidden_layers for index in layer_indices):
+            raise ValueError(
+                f"DINOv3 layer indices must be between 1 and {hidden_layers}"
+            )
 
         self.backbone = backbone
         self.backbone.requires_grad_(False)
         self.backbone.eval()
+        self.freeze_backbone = True
         self.patch_size = int(config.patch_size)
         self.num_prefix_tokens = 1 + int(config.num_register_tokens)
         self.hidden_size = int(config.hidden_size)
