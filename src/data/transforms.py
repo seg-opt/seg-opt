@@ -46,8 +46,6 @@ def resize_pair(
 
 @dataclass(frozen=True)
 class EvalSegmentationTransform:
-    """Deterministic full-frame preprocessing for validation and test data."""
-
     height: int = DEFAULT_IMAGE_HEIGHT
     width: int = DEFAULT_IMAGE_WIDTH
 
@@ -66,8 +64,6 @@ class EvalSegmentationTransform:
 
 @dataclass(frozen=True)
 class TrainSegmentationTransform:
-    """Full-frame resize followed by the canonical baseline augmentations."""
-
     height: int = DEFAULT_IMAGE_HEIGHT
     width: int = DEFAULT_IMAGE_WIDTH
     flip_probability: float = 0.5

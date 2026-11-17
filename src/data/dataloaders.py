@@ -44,7 +44,6 @@ def make_dataloaders(
         batch_size,
         shuffle=True,
         num_workers=num_workers,
-        drop_last=False,
         seed=seed,
     )
     val_loader = make_dataloader(
