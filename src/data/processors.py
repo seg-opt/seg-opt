@@ -33,5 +33,4 @@ class SegmentationImageProcessor:
             (self._image_tensor(image) - self.mean) / self.std
             for image in images
         ]
-        encoded = {"pixel_values": torch.stack(pixels)}
-        return encoded
+        return {"pixel_values": torch.stack(pixels)}
