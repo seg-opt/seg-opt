@@ -1,15 +1,24 @@
+import colorsys
+import json
 import math
+import shutil
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import lightning as L
+import numpy as np
 import torch
 from lightning.pytorch import Callback
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
+from PIL import Image, ImageDraw
 from torch import nn
 from torch.nn.modules.module import _IncompatibleKeys
 
+from src.data.dataset import _decode_lusnar_pair
+from src.data.processors import SegmentationImageProcessor
+from src.data.transforms import EvalSegmentationTransform
 from src.distillation.bpkd import DistillationLossResult
 from src.distillation.sard import capture_features
 from src.train.metrics import SegmentationMetrics
@@ -521,6 +530,66 @@ class DistillationModule(BaselineModule):
         return _IncompatibleKeys(missing, unexpected)
 
 
+class LusnarExamplesCallback(Callback):
+    def __init__(self, examples_dir, output_dir, class_names, height, width):
+        self.examples_dir = Path(examples_dir)
+        self.output_dir = Path(output_dir) / "segmentation_samples"
+        self.class_names = tuple(class_names)
+        self.transform = EvalSegmentationTransform(height=height, width=width)
+        self.processor = SegmentationImageProcessor()
+
+    def on_test_start(self, trainer, pl_module):
+        if not trainer.is_global_zero:
+            return
+        manifest_path = self.examples_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.output_dir.mkdir(parents=True, exist_ok=False)
+        shutil.copy2(manifest_path, self.output_dir / "manifest.json")
+        palette = np.array([
+            [round(channel * 255) for channel in colorsys.hsv_to_rgb(
+                index / len(self.class_names), 0.75, 0.95
+            )]
+            for index in range(len(self.class_names))
+        ], dtype=np.uint8)
+        with torch.inference_mode(), trainer.precision_plugin.forward_context():
+            for sample in manifest["samples"]:
+                files = {Path(item["path"]).name: self.examples_dir / item["path"]
+                         for item in sample["files"]}
+                image, labels = _decode_lusnar_pair((files["rgb.png"], files["label.png"]))
+                image, labels = self.transform(image, labels)
+                pixels = self.processor(images=[image], return_tensors="pt")["pixel_values"]
+                predictions = pl_module(pixels.to(pl_module.device)).argmax(dim=1)[0]
+                prediction = predictions.cpu().numpy()
+                height, width = labels.shape
+                canvas = Image.new(
+                    "RGB", (max(3 * width, 300), height + 30 + 18 * len(self.class_names)), "white"
+                )
+                draw = ImageDraw.Draw(canvas)
+                for column, (title, panel) in enumerate((
+                    ("Input", image), ("Ground truth", palette[labels]),
+                    ("Prediction", palette[prediction]),
+                )):
+                    canvas.paste(Image.fromarray(panel), (column * width, 24))
+                    draw.text((column * width + 2, 4), title, fill="black")
+                for index, name in enumerate(self.class_names):
+                    y = height + 30 + index * 18
+                    color = tuple(int(value) for value in palette[index])
+                    draw.rectangle((4, y, 16, y + 12), fill=color)
+                    draw.text((22, y), name, fill="black")
+                canvas.save(self.output_dir / f"{sample['scene']}_{sample['timestamp']}.png")
+        for logger in trainer.loggers:
+            if isinstance(logger, WandbLogger):
+                import wandb
+
+                run = logger.experiment
+                artifact = wandb.Artifact(
+                    name=f"lusnar-examples-{run.id}", type="evaluation",
+                    metadata={"source": "lusnar/examples", "sample_count": len(manifest["samples"])},
+                )
+                artifact.add_dir(str(self.output_dir))
+                run.log_artifact(artifact)
+
+
 def create_trainer(
     output_dir: str | Path,
     max_epochs: int,
@@ -558,7 +627,16 @@ def create_trainer(
             save_top_k=1,
             save_last=False,
             save_weights_only=True,
-        )
+        ),
+        ModelCheckpoint(
+            dirpath=output_dir / "checkpoints",
+            filename="epoch-{epoch:03d}",
+            auto_insert_metric_name=False,
+            every_n_epochs=5,
+            save_on_train_epoch_end=True,
+            save_top_k=-1,
+            save_weights_only=False,
+        ),
     ]
     if enable_wandb:
         callbacks.append(LearningRateMonitor(logging_interval="step"))

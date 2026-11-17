@@ -9,6 +9,7 @@ import torch
 
 from src.baselines import BaselineComponents, build_baseline
 from src.data.dataset import MASK_VARIANTS, MaskVariant
+from src.train.trainer import LusnarExamplesCallback
 from src.utils.artifacts import (
     parameter_counts,
     sha256_file,
@@ -191,12 +192,23 @@ def evaluate_checkpoint(
         verbose=False,
     )
     validation = components.module.latest_metrics("val")
-    trainer.test(
-        components.module,
-        dataloaders=components.test_loader,
-        ckpt_path=str(checkpoint_path),
-        verbose=False,
-    )
+    examples_callback = None
+    if config.data.dataset == "lusnar":
+        examples_callback = LusnarExamplesCallback(
+            Path(config.data.dataset_root) / "examples", output_dir,
+            config.data.class_names, config.data.image_height, config.data.image_width,
+        )
+        trainer.callbacks.append(examples_callback)
+    try:
+        trainer.test(
+            components.module,
+            dataloaders=components.test_loader,
+            ckpt_path=str(checkpoint_path),
+            verbose=False,
+        )
+    finally:
+        if examples_callback is not None:
+            trainer.callbacks.remove(examples_callback)
     test = components.module.latest_metrics("test")
 
     config_path = output_dir / "config.yaml"
