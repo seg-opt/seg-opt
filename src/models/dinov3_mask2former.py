@@ -156,13 +156,9 @@ class DINOv3PyramidBackbone(nn.Module):
 class DINOv3Mask2FormerSegmenter(Mask2FormerSegmenter):
     """Mask2Former semantic model backed by a frozen DINOv3 feature pyramid."""
 
-    @property
-    def pyramid_backbone(self) -> DINOv3PyramidBackbone:
-        return self.model.model.pixel_level_module.encoder
-
     def encoder_parameters(self) -> Iterable[nn.Parameter]:
         return (
             parameter
-            for parameter in self.pyramid_backbone.backbone.parameters()
+            for parameter in self.model.model.pixel_level_module.encoder.backbone.parameters()
             if parameter.requires_grad
         )
