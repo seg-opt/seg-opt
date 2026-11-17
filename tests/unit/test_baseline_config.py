@@ -179,20 +179,25 @@ distillation:
     assert Path(config.distillation.teacher.config_path).is_absolute()
 
 
-def test_segformer_b4_to_fast_scnn_logit_distillation_config():
+@pytest.mark.parametrize(
+    ("student_name", "model_id", "pretrained"),
+    [("fast_scnn", None, False), ("segformer_b0", "nvidia/mit-b0", True)],
+)
+def test_segformer_b4_logit_distillation_configs(student_name, model_id, pretrained):
     config = load_config(
-        "experiments/logit_distillation/fast_scnn_from_segformer_b4.yaml"
+        f"experiments/logit_distillation/{student_name}_from_segformer_b4.yaml"
     )
 
-    assert config.model.name == "fast_scnn"
-    assert not config.model.pretrained
+    assert config.model.name == student_name
+    assert config.model.model_id == model_id
+    assert config.model.pretrained == pretrained
     assert config.data.mask_variant == "clean"
     assert config.training.batch_size == 8
     assert config.training.accumulate_grad_batches == 2
     assert config.training.batch_size * config.training.accumulate_grad_batches == 16
     assert Path(config.training.output_dir).parts[-3:] == (
         "logit_distillation",
-        "fast_scnn_from_segformer_b4",
+        f"{student_name}_from_segformer_b4",
         "seed42",
     )
     assert config.distillation is not None
@@ -286,42 +291,6 @@ def test_resnet34_bpkd_configs_match_vanilla_protocol(
     assert config.distillation.edge_kernel_size == 7
     assert config.distillation.prm
     assert config.distillation.pom
-
-
-def test_segformer_b4_to_b0_logit_distillation_config():
-    config = load_config(
-        "experiments/logit_distillation/segformer_b0_from_segformer_b4.yaml"
-    )
-
-    assert config.model.name == "segformer_b0"
-    assert config.model.model_id == "nvidia/mit-b0"
-    assert config.model.pretrained
-    assert config.data.mask_variant == "clean"
-    assert config.training.batch_size == 8
-    assert config.training.accumulate_grad_batches == 2
-    assert config.training.batch_size * config.training.accumulate_grad_batches == 16
-    assert Path(config.training.output_dir).parts[-3:] == (
-        "logit_distillation",
-        "segformer_b0_from_segformer_b4",
-        "seed42",
-    )
-    assert config.distillation is not None
-    assert config.distillation.method == "vanilla"
-    assert config.distillation.spatial_stride == 8
-    assert config.distillation.vanilla_weight == 1.0
-    assert config.distillation.vanilla_temperature == 1.0
-    assert Path(config.distillation.teacher.config_path).parts[-2:] == (
-        "baselines_benchmark",
-        "segformer_b4.yaml",
-    )
-    assert Path(config.distillation.teacher.checkpoint_path).parts[-6:] == (
-        "results",
-        "baselines_benchmark",
-        "segformer_b4",
-        "seed42",
-        "checkpoints",
-        "best.ckpt",
-    )
 
 
 @pytest.mark.parametrize(
