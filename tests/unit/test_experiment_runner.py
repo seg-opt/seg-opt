@@ -1,5 +1,5 @@
 import concurrent.futures
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import asdict, dataclass
 import hashlib
 from io import StringIO
@@ -102,6 +102,20 @@ class ExperimentRunnerTests(unittest.TestCase):
             "test": {"miou": 0.9, "per_class": {"small_rock": {"iou": 0.7}}},
         }
         (directory / "metrics.json").write_text(json.dumps(metrics))
+        return directory
+
+    def distillation_artifact(self, name, weight=1.0, teacher_hashes=None):
+        teacher = {"config_path": f"/{name}/teacher.yaml",
+                   "checkpoint_path": f"/{name}/best.ckpt"}
+        settings = {"method": "vanilla", "vanilla_weight": weight}
+        directory = self.artifact(name, settings={
+            "training": {}, "distillation": {**settings, "teacher": teacher}})
+        metrics = experiment.read_json(directory / "metrics.json")
+        metrics["distillation"] = {
+            "method": "vanilla", "settings": settings,
+            "teacher": {**teacher, "config_sha256": "a" * 64,
+                        "checkpoint_sha256": "b" * 64, **(teacher_hashes or {})}}
+        experiment.atomic_json(directory / "metrics.json", metrics)
         return directory
 
     def pipeline(self, teacher=None):
@@ -483,6 +497,91 @@ class ExperimentRunnerTests(unittest.TestCase):
                              for warning in report["warnings"]), 2)
         self.assertFalse(any("batch_size" in warning for warning in report["warnings"]))
 
+    def test_compare_ignores_teacher_path_only_differences(self):
+        baseline = self.distillation_artifact("baseline")
+        relocated = self.distillation_artifact("relocated")
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, relocated])
+        self.assertEqual(report["warnings"], [])
+
+    def test_compare_warns_on_distillation_weight_without_teacher_path_noise(self):
+        baseline = self.distillation_artifact("baseline")
+        changed = self.distillation_artifact("changed", weight=2.0)
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        with patch.dict("sys.modules", {"yaml": parser}):
+            report = experiment.compare([baseline, changed])
+        self.assertEqual(report["warnings"], [f"{changed}: distillation settings differs",
+                                               f"{changed}: distillation protocol differs"])
+
+    def test_compare_warns_on_teacher_hash_without_teacher_path_noise(self):
+        baseline = self.distillation_artifact("baseline")
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for field in ("config_sha256", "checkpoint_sha256"):
+            changed = self.distillation_artifact(field, teacher_hashes={field: "c" * 64})
+            with self.subTest(field=field), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare([baseline, changed])
+                self.assertEqual(report["warnings"], [f"{changed}: distillation teacher differs"])
+
+    def test_compare_warns_on_unverified_teacher_identity_without_failing_cli(self):
+        baseline = self.distillation_artifact("baseline")
+        changed = self.distillation_artifact("changed")
+        originals = {directory: experiment.read_json(directory / "metrics.json")
+                     for directory in (baseline, changed)}
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for teacher in ({}, {"config_sha256": None, "checkpoint_sha256": None},
+                        "/legacy/best.ckpt", None,
+                        {"config_sha256": "a" * 64}, {"checkpoint_sha256": "b" * 64},
+                        {"config_sha256": None, "checkpoint_sha256": "b" * 64},
+                        {"config_sha256": "a" * 64, "checkpoint_sha256": None}):
+            for affected in ((baseline, changed), (baseline,), (changed,)):
+                with self.subTest(teacher=teacher, affected=affected):
+                    for directory, original in originals.items():
+                        metrics = json.loads(json.dumps(original))
+                        if directory in affected:
+                            metrics["distillation"]["teacher"] = teacher
+                        experiment.atomic_json(directory / "metrics.json", metrics)
+                    output, errors = StringIO(), StringIO()
+                    with patch.dict("sys.modules", {"yaml": parser}), \
+                            redirect_stdout(output), redirect_stderr(errors):
+                        result = experiment.main(["compare", str(baseline), str(changed)])
+                    self.assertEqual(result, 0)
+                    self.assertEqual(errors.getvalue(), "")
+                    report = json.loads(output.getvalue())
+                    self.assertEqual(report["warnings"],
+                                     [f"{changed}: distillation teacher identity unverified"])
+                    self.assertEqual(len(report["artifacts"]), 2)
+                    self.assertIn("delta", report["artifacts"][1])
+
+    def test_compare_distinguishes_supervised_from_teacher_only_protocol(self):
+        supervised = self.artifact("supervised", settings={"training": {}, "distillation": None})
+        teacher_only = self.artifact("teacher-only", settings={
+            "training": {}, "distillation": {"teacher": {"config_path": "/teacher.yaml"}}})
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for paths in ((supervised, teacher_only), (teacher_only, supervised)):
+            with self.subTest(paths=paths), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare(paths)
+                self.assertEqual(report["warnings"],
+                                 [f"{paths[1]}: distillation protocol differs"])
+
+    def test_compare_warns_on_each_model_protocol_difference(self):
+        model = {"name": "fast_scnn", "model_id": None,
+                 "pretrained": False, "freeze_backbone": False}
+        baseline = self.artifact("baseline", settings={"training": {}, "model": model})
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for field, value in (("name", "segformer_b0"), ("model_id", "nvidia/mit-b0"),
+                             ("pretrained", True), ("freeze_backbone", True)):
+            artifact = self.artifact(field, settings={"training": {}, "model": {**model, field: value}})
+            with self.subTest(field=field), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare([baseline, artifact])
+                self.assertEqual(report["warnings"], [f"{artifact}: model protocol differs"])
+
     def test_compare_warns_on_each_optimizer_protocol_difference(self):
         training = {"batch_size": 16, "accumulate_grad_batches": 1, "epochs": 20,
                     "learning_rate": 0.0005, "precision": "bf16", "seed": 42,
@@ -769,8 +868,14 @@ class ExperimentRunnerTests(unittest.TestCase):
         command = execute.call_args.args[1]
         self.assertEqual(command, ["bash", str(self.root / "scripts/train.sbatch"), "python", "-m",
                                    "scripts.train", "--config", "absent/b.yaml", "--devices", "1", "--fast-dev-run"])
-        self.assertEqual(execute.call_args.args[2]["WANDB_GROUP"], "b")
+        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "b")
         self.assertEqual(execute.call_args.args[2]["WANDB_MODE"], "offline")
+        with patch.dict(os.environ, {"WANDB_RUN_GROUP": "selected-group"}), \
+                patch.object(experiment.os, "execvpe") as execute:
+            experiment.launch(arguments)
+        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "selected-group")
 
 
 if __name__ == "__main__":
