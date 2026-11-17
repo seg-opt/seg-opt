@@ -8,7 +8,7 @@ import lightning as L
 import torch
 
 from src.baselines import BaselineComponents, build_baseline
-from src.data.dataset import MASK_VARIANTS
+from src.data.dataset import MASK_VARIANTS, MaskVariant
 from src.train.trainer import LusnarExamplesCallback
 from src.utils.artifacts import (
     parameter_counts,
@@ -154,10 +154,16 @@ def evaluate_checkpoint(
     *,
     devices: int | list[int] | str = "auto",
     run_kind: str = "full",
+    mask_variant: MaskVariant | None = None,
     trainer: L.Trainer | None = None,
 ) -> dict[str, Any]:
     checkpoint_path = Path(checkpoint_path).resolve()
     output_dir = Path(output_dir)
+    selected_mask_variant = (
+        config.data.mask_variant if mask_variant is None else mask_variant
+    )
+    if selected_mask_variant not in MASK_VARIANTS:
+        raise ValueError(f"mask_variant must be one of {list(MASK_VARIANTS)}")
 
     if trainer is None:
         limit = 1 if run_kind == "smoke" else 1.0
@@ -213,7 +219,7 @@ def evaluate_checkpoint(
         "data": {
             "class_names": list(config.data.class_names),
             "image_size": [config.data.image_height, config.data.image_width],
-            "mask_variant": config.data.mask_variant,
+            "mask_variant": selected_mask_variant,
             "split_sha256": components.split_manifest.sha256,
             "counts": components.split_manifest.counts,
         },
@@ -281,6 +287,7 @@ def main() -> None:
         output_dir,
         devices=args.devices,
         run_kind="smoke" if args.smoke_run else "full",
+        mask_variant=config.data.mask_variant,
     )
     log.info(
         "Evaluation complete: val mIoU=%.4f, test mIoU=%.4f",
