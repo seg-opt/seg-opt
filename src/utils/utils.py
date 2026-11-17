@@ -54,10 +54,7 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         if self.name not in BASELINE_NAMES:
-            raise ValueError(
-                f"unsupported baseline {self.name!r}; expected one of "
-                f"{sorted(BASELINE_NAMES)}"
-            )
+            raise ValueError(f"unsupported baseline {self.name!r}")
         if self.name == "fast_scnn" and self.pretrained:
             raise ValueError("Fast-SCNN has no pretrained weights")
         if (
