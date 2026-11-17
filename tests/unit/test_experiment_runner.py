@@ -1,5 +1,5 @@
 import concurrent.futures
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import asdict, dataclass
 import hashlib
 from io import StringIO
@@ -525,6 +525,49 @@ class ExperimentRunnerTests(unittest.TestCase):
             with self.subTest(field=field), patch.dict("sys.modules", {"yaml": parser}):
                 report = experiment.compare([baseline, changed])
                 self.assertEqual(report["warnings"], [f"{changed}: distillation teacher differs"])
+
+    def test_compare_warns_on_unverified_teacher_identity_without_failing_cli(self):
+        baseline = self.distillation_artifact("baseline")
+        changed = self.distillation_artifact("changed")
+        originals = {directory: experiment.read_json(directory / "metrics.json")
+                     for directory in (baseline, changed)}
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for teacher in ({}, {"config_sha256": None, "checkpoint_sha256": None},
+                        "/legacy/best.ckpt", None,
+                        {"config_sha256": "a" * 64}, {"checkpoint_sha256": "b" * 64},
+                        {"config_sha256": None, "checkpoint_sha256": "b" * 64},
+                        {"config_sha256": "a" * 64, "checkpoint_sha256": None}):
+            for affected in ((baseline, changed), (baseline,), (changed,)):
+                with self.subTest(teacher=teacher, affected=affected):
+                    for directory, original in originals.items():
+                        metrics = json.loads(json.dumps(original))
+                        if directory in affected:
+                            metrics["distillation"]["teacher"] = teacher
+                        experiment.atomic_json(directory / "metrics.json", metrics)
+                    output, errors = StringIO(), StringIO()
+                    with patch.dict("sys.modules", {"yaml": parser}), \
+                            redirect_stdout(output), redirect_stderr(errors):
+                        result = experiment.main(["compare", str(baseline), str(changed)])
+                    self.assertEqual(result, 0)
+                    self.assertEqual(errors.getvalue(), "")
+                    report = json.loads(output.getvalue())
+                    self.assertEqual(report["warnings"],
+                                     [f"{changed}: distillation teacher identity unverified"])
+                    self.assertEqual(len(report["artifacts"]), 2)
+                    self.assertIn("delta", report["artifacts"][1])
+
+    def test_compare_distinguishes_supervised_from_teacher_only_protocol(self):
+        supervised = self.artifact("supervised", settings={"training": {}, "distillation": None})
+        teacher_only = self.artifact("teacher-only", settings={
+            "training": {}, "distillation": {"teacher": {"config_path": "/teacher.yaml"}}})
+        parser = ModuleType("yaml")
+        parser.safe_load = json.load
+        for paths in ((supervised, teacher_only), (teacher_only, supervised)):
+            with self.subTest(paths=paths), patch.dict("sys.modules", {"yaml": parser}):
+                report = experiment.compare(paths)
+                self.assertEqual(report["warnings"],
+                                 [f"{paths[1]}: distillation protocol differs"])
 
     def test_compare_warns_on_each_model_protocol_difference(self):
         model = {"name": "fast_scnn", "model_id": None,
