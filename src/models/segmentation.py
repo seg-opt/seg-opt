@@ -222,9 +222,7 @@ class Mask2FormerSegmenter(SemanticSegmenter):
                     "Mask2Former cannot train on an all-ignore target "
                     f"(sample {sample_index})"
                 )
-            if present.numel() and (
-                present.min() < 0 or present.max() >= self.num_classes
-            ):
+            if present.min() < 0 or present.max() >= self.num_classes:
                 raise ValueError("labels contain a class outside the configured range")
             present = present.to(dtype=torch.long)
             masks = torch.stack(
@@ -240,10 +238,6 @@ class Mask2FormerSegmenter(SemanticSegmenter):
         masks_queries_logits: torch.Tensor,
         output_size: tuple[int, int],
     ) -> torch.Tensor:
-        if class_queries_logits.ndim != 3 or masks_queries_logits.ndim != 4:
-            raise ValueError("Mask2Former query outputs have invalid dimensions")
-        if class_queries_logits.shape[:2] != masks_queries_logits.shape[:2]:
-            raise ValueError("class and mask query counts do not match")
         if class_queries_logits.shape[-1] != self.num_classes + 1:
             raise ValueError("class queries must include one no-object class")
 
