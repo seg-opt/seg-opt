@@ -64,7 +64,7 @@ class SemanticSegmenter(nn.Module):
         )
 
 
-def make_segmentation_head(
+def make_segmentation_head(  # noqa: PLR0913
     in_channels: int,
     num_classes: int,
     head_type: str = "linear",
