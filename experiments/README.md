@@ -105,15 +105,12 @@ reporting scores and protocol warnings, without ranking methods. Training
 settings come only from verified `config.yaml`, parsed with PyYAML (available
 in the development container). Stdlib-only `python3 -S` comparison reports
 training protocol as unavailable/unverified; unauthenticated protocol sidecars
-are not used, even when they include a valid config hash. Schema 2 is unchanged.
+are not used, even when they include a valid config hash.
 Optimizer warnings include weight decay, warmup fraction and backbone learning
-rate; output-directory differences are intentionally ignored. Matching report
-formats alone do not establish controlled comparisons.
+rate; output-directory differences are intentionally ignored.
 
 SLURM owns the submitted dependencies, including the terminal summary on
-failure. After successful submission, no laptop-side wait, email setup, or
-continuously connected assistant is needed. Existing legacy jobs are not
-automatically adopted by these operations.
+failure. Existing legacy jobs are not automatically adopted by these operations.
 
 Family sbatch files call `scripts/train.sbatch` directly.
 
