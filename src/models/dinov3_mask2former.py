@@ -190,31 +190,3 @@ class DINOv3Mask2FormerSegmenter(Mask2FormerSegmenter):
             for parameter in self.pyramid_backbone.backbone.parameters()
             if parameter.requires_grad
         )
-
-    @staticmethod
-    def _feature_stage_index(stage: int) -> int:
-        index = stage if stage >= 0 else len(DINOv3PyramidBackbone.strides) + stage
-        if not 0 <= index < len(DINOv3PyramidBackbone.strides):
-            raise ValueError("DINOv3 Mask2Former feature stage must be in [-4, 3]")
-        return index
-
-    def feature_channels_at(self, stage: int) -> int:
-        return self.pyramid_backbone.channels[self._feature_stage_index(stage)]
-
-    def feature_stride_at(self, stage: int) -> int:
-        return self.pyramid_backbone.strides[self._feature_stage_index(stage)]
-
-    def scores_and_features(
-        self,
-        pixel_values: torch.Tensor,
-        feature_stage: int = -1,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        outputs = self.model(
-            pixel_values=pixel_values,
-            output_hidden_states=True,
-        )
-        if outputs.encoder_hidden_states is None:
-            raise RuntimeError("Mask2Former did not return encoder feature maps")
-        stage_index = self._feature_stage_index(feature_stage)
-        scores = self._scores_from_outputs(outputs, pixel_values.shape[-2:])
-        return scores, outputs.encoder_hidden_states[stage_index]
