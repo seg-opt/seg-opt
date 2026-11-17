@@ -161,8 +161,6 @@ def evaluate_checkpoint(
     output_dir = Path(output_dir)
     if not checkpoint_path.is_file():
         raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
-    if run_kind not in {"full", "smoke"}:
-        raise ValueError("run_kind must be 'full' or 'smoke'")
 
     if trainer is None:
         limit = 1 if run_kind == "smoke" else 1.0
