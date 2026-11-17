@@ -39,23 +39,15 @@ def make_dataloaders(
     num_workers: int = DEFAULT_NUM_WORKERS,
     seed: int = 42,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
-    train_loader = make_dataloader(
-        train_dataset,
-        batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        seed=seed,
+    return tuple(
+        make_dataloader(
+            dataset,
+            batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            seed=seed if shuffle else None,
+        )
+        for dataset, shuffle in (
+            (train_dataset, True), (val_dataset, False), (test_dataset, False)
+        )
     )
-    val_loader = make_dataloader(
-        val_dataset,
-        batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-    )
-    test_loader = make_dataloader(
-        test_dataset,
-        batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-    )
-    return train_loader, val_loader, test_loader
