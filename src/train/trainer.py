@@ -147,41 +147,12 @@ class BaselineModule(L.LightningModule):
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         return self.model(images)
 
-    def _validate_scores(
-        self,
-        scores: torch.Tensor,
-        labels: torch.Tensor,
-    ) -> None:
-        expected = (
-            labels.shape[0],
-            len(self.metrics.class_names),
-            *labels.shape[-2:],
-        )
-        if tuple(scores.shape) != expected:
-            raise ValueError(
-                "model scores must have shape [B, classes, H, W]; "
-                f"expected {expected}, got {tuple(scores.shape)}"
-            )
-
     def _loss_and_scores(
         self,
         images: torch.Tensor,
         labels: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        loss_and_scores = getattr(self.model, "loss_and_scores", None)
-        if not callable(loss_and_scores):
-            raise TypeError("baseline model must implement loss_and_scores")
-
-        result = loss_and_scores(images, labels, self.criterion)
-        if not isinstance(result, tuple) or len(result) != 2:
-            raise TypeError("loss_and_scores must return (loss, scores)")
-        loss, scores = result
-        if not isinstance(loss, torch.Tensor) or loss.ndim != 0:
-            raise TypeError("loss_and_scores must return a scalar tensor loss")
-        if not isinstance(scores, torch.Tensor):
-            raise TypeError("loss_and_scores must return tensor scores")
-        self._validate_scores(scores, labels)
-        return loss, scores
+        return self.model.loss_and_scores(images, labels, self.criterion)
 
     def _log_loss(
         self,
