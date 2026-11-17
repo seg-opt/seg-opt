@@ -226,13 +226,12 @@ BPKD/SARD calibration is not part of this completed campaign and has not been su
 
 ## Validation-only Transfer Diagnosis (2026-11-10)
 
-All seven completed best-validation checkpoints were restored strictly and their
-config, checkpoint, and split hashes verified. GPU job 9561983 evaluated all 896
-validation images, without optimizer steps or test-set inference. Raw receipts
-and the source snapshot remain on Eagle under
+All seven best-validation checkpoints were strictly restored with verified config,
+checkpoint, and split hashes. GPU job 9561983 evaluated 896 validation images, with
+no optimizer steps or test inference. Receipts and source snapshot remain on Eagle:
 `/mnt/storage_6/project_data/pl1200-01/issue-15-cnn-kd/diagnostics/kd-transfer-20261110/`.
-The report is `validation.json` (SHA256
-`9862a94343ea1a7fc2b87d9e51789bfb268ccdf6e63781cf5e9fa7c6b86c4df4`).
+`validation.json` SHA256:
+`9862a94343ea1a7fc2b87d9e51789bfb268ccdf6e63781cf5e9fa7c6b86c4df4`.
 
 | Restored prediction | Validation mIoU (%) | Small-rock IoU (%) |
 | --- | ---: | ---: |
@@ -241,34 +240,25 @@ The report is `validation.json` (SHA256
 | Vanilla KD Fast-SCNN, mean of three seeds | 85.71 | 72.31 |
 | Teacher logits downsampled at stride 8, then bilinearly restored | 88.22 | 75.71 |
 
-These are post-hoc bf16-mixed measurements at batch size 4, not replacements for
-the original checkpoint-selection metrics; small numerical differences are
-expected. Coarsening is a visualization proxy for lost spatial detail, not a
-student result or an exact upper bound on achievable KD performance.
+Post-hoc bf16-mixed measurements, batch 4; not checkpoint-selection metrics.
+Stride-8 downsampling and bilinear restoration are a proxy for lost spatial detail,
+not a student result or an upper bound on achievable KD performance.
 
-For supervised seeds 42/43/44, the teacher correctly predicts 51.05/51.91/51.29%
-of the pixels those students misclassify. On ground-truth small-rock pixels, it
-corrects 42.66/43.07/41.83% of their errors. Teacher-only correct pixels outnumber
-student-only correct pixels by about 2:1 overall. These are pixel overlaps, not
-IoU gains or a deployable oracle; the teacher also makes unique errors.
+For supervised seeds 42/43/44, teacher-correct predictions cover
+51.05/51.91/51.29% of student errors and 42.66/43.07/41.83% of ground-truth
+small-rock errors. Teacher-only/student-only correct pixels are about 2:1:
+pixel overlaps, not IoU gains or a deployable oracle; the teacher has unique errors.
 
-The diagnostic source snapshot's `scripts/diagnose_kd.py` measures gradients over
-every trainable student parameter on validation batches
-0/31/63/95/127/159/191/223 (32 images). At weight 1, stride 8, temperature 1,
-mean KD/task gradient-norm ratios are 0.58 for supervised checkpoints and 0.46
-for KD checkpoints; mean cosine similarities are 0.51 and 0.67. Negative cosine
-occurs in 4/24 and 3/24 checkpoint-batch pairs. The current KD signal is therefore
-neither uniformly negligible nor uniformly opposed to CE+Dice in this sample.
-Teacher small-rock predictions are sharp: mean top-class confidence 0.973 and
-entropy 0.065 nats.
+The snapshot's `scripts/diagnose_kd.py` measures all trainable student gradients on
+validation batches 0/31/63/95/127/159/191/223 (32 images). Weight 1, stride 8,
+temperature 1: mean KD/task norm ratios 0.58/0.46, cosines 0.51/0.67,
+negative cosine in 4/24 and 3/24 checkpoint-batch pairs (supervised/KD checkpoints).
+The sampled signal is neither uniformly negligible nor uniformly opposed to CE+Dice.
+Teacher small-rock top-class confidence averages 0.973; entropy is 0.065 nats.
 
-Temperature 4 at unchanged weight raises those mean norm ratios to 9.56/8.50
-and reduces mean cosines to 0.03/0.18. Temperature and weight must be calibrated
-together; raising temperature alone is not justified by these snapshots.
-Stride 1 gives similar aggregate parameter-gradient directions in this sample,
-so spatial coarsening alone does not establish a cause of the KD result.
-
-These eval-mode, final-checkpoint gradients do not reconstruct training dynamics
-or identify one causal failure. A next experiment should use a small,
-validation-selected weight/stride ablation with matched controls and a separate
-confirmation seed. No calibration training was launched by this diagnosis.
+At temperature 4 with unchanged weight, mean norm ratios rise to 9.56/8.50
+and cosines fall to 0.03/0.18: calibrate temperature and weight together.
+Stride 1 gives similar aggregate gradient directions in this sample; coarsening
+alone is not a demonstrated cause. Eval-mode final-checkpoint gradients do
+not reconstruct training dynamics or establish one cause.
+No calibration training was launched by this diagnosis.
