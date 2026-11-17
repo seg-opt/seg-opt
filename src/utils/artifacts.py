@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
 from torch import nn
 
@@ -28,14 +27,9 @@ def parameter_counts(model: nn.Module) -> dict[str, int]:
 
 
 def to_builtin(value: Any) -> Any:
-    """Convert tensors and NumPy values into deterministic JSON-native values."""
     if isinstance(value, torch.Tensor):
         value = value.detach().cpu()
         return value.item() if value.ndim == 0 else value.tolist()
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    if isinstance(value, np.generic):
-        return value.item()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
