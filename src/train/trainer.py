@@ -220,9 +220,6 @@ class BaselineModule(L.LightningModule):
     ) -> torch.Tensor:
         return self._evaluation_step(batch, "test")
 
-    def _reset_metrics(self, stage: str) -> None:
-        self.metrics.reset(stage)
-
     def _log_metrics(self, stage: str) -> None:
         scalar_metrics, confusion = self.metrics.snapshot(stage)
         self._latest_metrics[stage] = {
@@ -252,19 +249,19 @@ class BaselineModule(L.LightningModule):
         }
 
     def on_train_epoch_start(self) -> None:
-        self._reset_metrics("train")
+        self.metrics.reset("train")
 
     def on_train_epoch_end(self) -> None:
         self._log_metrics("train")
 
     def on_validation_epoch_start(self) -> None:
-        self._reset_metrics("val")
+        self.metrics.reset("val")
 
     def on_validation_epoch_end(self) -> None:
         self._log_metrics("val")
 
     def on_test_epoch_start(self) -> None:
-        self._reset_metrics("test")
+        self.metrics.reset("test")
 
     def on_test_epoch_end(self) -> None:
         self._log_metrics("test")
