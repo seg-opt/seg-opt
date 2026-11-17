@@ -150,6 +150,11 @@ class ExperimentRunnerTests(unittest.TestCase):
         arguments = parser.parse_args(["submit", "experiments/example.yaml"])
         self.assertEqual(arguments.command, "submit")
         self.assertEqual(arguments.configs, ["experiments/example.yaml"])
+        for command in ("retry", "launch"):
+            with self.subTest(command=command), redirect_stderr(StringIO()), \
+                    self.assertRaises(SystemExit) as stopped:
+                parser.parse_args([command, str(self.output)])
+            self.assertEqual(stopped.exception.code, 2)
 
     def test_submit_seed_is_persisted_for_every_gpu_stage_without_config_changes(self):
         for seed in (0, 42, 43, 44, 4294967295):
@@ -332,70 +337,21 @@ class ExperimentRunnerTests(unittest.TestCase):
 
     def test_status_uses_scheduler_and_retry_rejects_live_stages(self):
         run = self.submit("submit", "experiments/student.yaml")
+        self.complete_stage(run, "student-smoke")
+        first = run / "stages/student-smoke/attempt-0001"
+        first.rename(first.with_name("attempt-0002"))
+        experiment.atomic_json(first / "state.json", {"state": "failed"})
         self.states = {"101": ("COMPLETED", "0:0"), "102": ("RUNNING", "0:0"),
                        "103": ("PENDING", "0:0")}
         status = experiment.status(run)
+        self.assertEqual(status["stages"]["student-smoke"]["attempt"], "attempt-0002")
+        self.assertEqual(status["stages"]["student-smoke"]["state"], "COMPLETED")
         self.assertEqual(status["stages"]["student"]["state"], "RUNNING")
-        with self.assertRaisesRegex(ValueError, "live"):
-            experiment.retry(run)
+        self.assertEqual(status["stages"]["summary"]["state"], "PENDING")
         self.states = {}
-        with self.assertRaisesRegex(ValueError, "unknown"):
-            experiment.retry(run)
-        self.assertEqual(sum(call[0][0] == "sbatch" for call in self.calls), 3)
-
-    def test_retry_preserves_completed_attempts_and_uses_new_failed_attempts(self):
-        run = self.submit("submit", "experiments/student.yaml")
-        self.complete_stage(run, "student-smoke")
-        self.complete_stage(run, "summary")
-        self.states = {"101": ("COMPLETED", "0:0"), "102": ("FAILED", "1:0"),
-                       "103": ("COMPLETED", "0:0")}
-        experiment.retry(run)
         status = experiment.status(run)
-        self.assertEqual(status["stages"]["student-smoke"]["attempt"], "attempt-0001")
-        self.assertEqual(status["stages"]["student"]["attempt"], "attempt-0002")
-        self.assertEqual(status["stages"]["summary"]["attempt"], "attempt-0002")
-        self.assertFalse((run / "artifacts/student/attempt-0002").exists())
-
-    def test_retry_missing_teacher_renews_completed_descendants_in_manifest_order(self):
-        run = self.pipeline()
-        manifest = self.manifest(run)
-        for name in manifest["stages"]:
-            self.complete_stage(run, name)
-        self.states = {str(job): ("COMPLETED", "0:0") for job in range(101, 107)}
-        checkpoint = Path(experiment.stage_artifact(manifest, "teacher")) / "checkpoints/best.ckpt"
-        checkpoint.unlink()
-        self.assertEqual(experiment.status(run)["stages"]["teacher"]["state"], "FAILED")
-        old_files = {path: path.read_bytes() for parent in (run / "stages", run / "artifacts")
-                     for path in parent.rglob("*") if path.is_file()}
-        experiment.retry(run)
-        self.assertEqual(experiment.latest_attempt(run, "teacher-smoke").name, "attempt-0001")
-        for name in ("teacher", "gate", "kd-smoke", "kd", "summary"):
-            with self.subTest(stage=name):
-                self.assertEqual(experiment.latest_attempt(run, name).name, "attempt-0002")
-                self.assertEqual(experiment.stage_artifact(manifest, name),
-                                 str(run / "artifacts" / name / "attempt-0002"))
-                self.assertFalse(Path(experiment.stage_artifact(manifest, name)).exists())
-        jobs = [command for command, _ in self.calls if command[0] == "sbatch"][6:]
-        self.assertEqual([command[-1] for command in jobs],
-                         [name + "/attempt-0002" for name in ("teacher", "gate", "kd-smoke", "kd", "summary")])
-        self.assertIn("--dependency=afterok:107", jobs[1])
-        self.assertIn("--dependency=afterok:109", jobs[3])
-        self.assertIn("--dependency=afterany:101:107:108:109:110", jobs[4])
-        self.assertTrue(all(path.read_bytes() == content for path, content in old_files.items()))
-
-    def test_retry_missing_kd_keeps_valid_teacher_gate_and_smoke(self):
-        run = self.pipeline()
-        manifest = self.manifest(run)
-        for name in manifest["stages"]:
-            self.complete_stage(run, name)
-        self.states = {str(job): ("COMPLETED", "0:0") for job in range(101, 107)}
-        (Path(experiment.stage_artifact(manifest, "kd")) / "checkpoints/best.ckpt").unlink()
-        experiment.retry(run)
-        for name in ("teacher-smoke", "teacher", "gate", "kd-smoke"):
-            self.assertEqual(experiment.latest_attempt(run, name).name, "attempt-0001")
-        jobs = [command for command, _ in self.calls if command[0] == "sbatch"][6:]
-        self.assertEqual([command[-1] for command in jobs], ["kd/attempt-0002", "summary/attempt-0002"])
-        self.assertIn("--dependency=afterok:104", jobs[0])
+        self.assertEqual(status["stages"]["student-smoke"]["state"], "COMPLETED")
+        self.assertEqual(status["stages"]["student"]["state"], "UNKNOWN")
 
     def test_concurrent_atomic_stage_records_do_not_lose_updates(self):
         run = self.submit("submit", "experiments/student.yaml")
@@ -676,6 +632,8 @@ class ExperimentRunnerTests(unittest.TestCase):
                                      "python", "-m", "scripts.experiment"])
         self.assertIn("/output/experiments/" + run.name + "/manifest.json", command)
         self.assertEqual(invoke.call_args.kwargs["env"]["REPO_PATH"], str(run / "source"))
+        with self.assertRaisesRegex(ValueError, "attempt already started"):
+            experiment.worker(args)
 
     def test_managed_schedule_and_worker_environment_reject_inherited_python_paths(self):
         poison = {"PYTHONPATH": "/outside/package", "PYTHONHOME": "/outside/python"}
@@ -857,26 +815,6 @@ class ExperimentRunnerTests(unittest.TestCase):
     def test_default_profile_mounts_dataset_parent_for_existing_config_paths(self):
         profile = json.loads((Path(experiment.__file__).parent / "clusters/eagle.json").read_text())
         self.assertTrue(profile["data_path"].endswith("/datasets"))
-
-    def test_launch_validates_index_and_executes_existing_launcher_without_config_io(self):
-        arguments = experiment.build_parser().parse_args(["launch", "--smoke", "absent/a.yaml", "absent/b.yaml"])
-        for index in ("-1", "01", "x", "2"):
-            with patch.dict(os.environ, {"SLURM_ARRAY_TASK_ID": index}), self.assertRaises(ValueError):
-                experiment.launch(arguments)
-        with patch.dict(os.environ, {"SLURM_ARRAY_TASK_ID": "1"}), patch.object(experiment.os, "execvpe") as execute:
-            experiment.launch(arguments)
-        command = execute.call_args.args[1]
-        self.assertEqual(command, ["bash", str(self.root / "scripts/train.sbatch"), "python", "-m",
-                                   "scripts.train", "--config", "absent/b.yaml", "--devices", "1", "--fast-dev-run"])
-        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
-            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "b")
-        self.assertEqual(execute.call_args.args[2]["WANDB_MODE"], "offline")
-        with patch.dict(os.environ, {"WANDB_RUN_GROUP": "selected-group"}), \
-                patch.object(experiment.os, "execvpe") as execute:
-            experiment.launch(arguments)
-        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
-            self.assertEqual(execute.call_args.args[2][prefix + "WANDB_RUN_GROUP"], "selected-group")
-
 
 if __name__ == "__main__":
     unittest.main()
