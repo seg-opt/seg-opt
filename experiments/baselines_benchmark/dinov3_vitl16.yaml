@@ -19,7 +19,7 @@ metrics: {trimap_kernel_size: 7}
 
 training:
   output_dir: results/baselines_benchmark/dinov3_vitl16/seed42
-  epochs: 20
+  epochs: 100
   batch_size: 2
   accumulate_grad_batches: 8
   learning_rate: 1.0e-3

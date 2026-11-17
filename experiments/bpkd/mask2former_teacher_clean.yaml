@@ -19,7 +19,7 @@ metrics: {trimap_kernel_size: 7}
 
 training:
   output_dir: results/bpkd/teachers/mask2former_swinl_clean/seed42
-  epochs: 20
+  epochs: 100
   batch_size: 1
   accumulate_grad_batches: 16
   learning_rate: 1.0e-4

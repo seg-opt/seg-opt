@@ -18,8 +18,8 @@ data:
 loss: {cross_entropy_weight: 1.0, dice_weight: 0.5, ignore_index: 255}
 metrics: {trimap_kernel_size: 7}
 training:
-  output_dir: results/dinov3_mask2former/lunar_teacher_80e/seed42
-  epochs: 80
+  output_dir: results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42
+  epochs: 100
   batch_size: 1
   accumulate_grad_batches: 16
   learning_rate: 1.0e-4

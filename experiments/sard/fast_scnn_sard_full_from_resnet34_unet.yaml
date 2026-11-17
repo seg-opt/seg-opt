@@ -18,7 +18,7 @@ metrics: {trimap_kernel_size: 7}
 
 training:
   output_dir: results/sard/fast_scnn_from_resnet34_unet/full/seed42
-  epochs: 20
+  epochs: 100
   batch_size: 16
   accumulate_grad_batches: 1
   learning_rate: 5.0e-4

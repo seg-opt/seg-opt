@@ -12,7 +12,7 @@ loss: {cross_entropy_weight: 1.0, dice_weight: 0.5, ignore_index: 255}
 metrics: {trimap_kernel_size: 7}
 training:
   output_dir: results/strong_teacher_distillation/segformer_b0_logit_kd/seed42
-  epochs: 80
+  epochs: 100
   batch_size: 8
   accumulate_grad_batches: 2
   learning_rate: 6.0e-4
@@ -26,7 +26,7 @@ distillation:
   method: vanilla
   teacher: &strong_teacher
     config_path: experiments/strong_teacher_distillation/teacher_dinov3_mask2former.yaml
-    checkpoint_path: results/dinov3_mask2former/lunar_teacher_80e/seed42/checkpoints/best.ckpt
+    checkpoint_path: results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt
   spatial_stride: 8
   vanilla_weight: 1.0
   vanilla_temperature: 1.0
