@@ -199,19 +199,10 @@ The larger teacher's KD student has +0.079256 pp validation mIoU but
 Reported test mIoU is -0.187683 pp. This single-seed, mixed validation result
 does not establish that a larger teacher distills better.
 
-### BPKD/SARD Pilot
+### BPKD/SARD pilot
 
-The [completed seven-row pilot and offline loss audit](sard/README.md#completed-cnn-pilot-results)
-compare the seed-42 baseline and vanilla reference with five transferred,
-untuned BPKD/SARD settings. Uniform SARD's reported test mIoU is
-+0.771719 pp versus baseline and only +0.039226 pp versus vanilla, a
-near-tie rather than evidence of superiority. Full SARD and all three BPKD
-settings regress on validation as well as test. Large logged scalar KD/task
-ratios motivate validation-based normalization/weight checks, not a causal
-claim about gradients or a general failure claim about either method.
-No additional training, hyperparameter calibration, or sweep was performed
-during historical reporting. Additional studies need matched controls and a
-protocol fixed using validation before viewing new test outcomes.
+Table, loss audit, and the validation small-rock delta:
+[sard/README.md](sard/README.md#completed-cnn-pilot-results).
 
 ## Completed ResNet101 CNN Campaign
 
