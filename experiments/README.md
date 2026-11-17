@@ -150,31 +150,11 @@ that setting are not controlled CNN loss comparisons. The historical results
 below used 20 epochs; current canonical YAMLs use 80. Compare only matched
 training budgets and preserve the original resolved configs on HPC.
 
-## Controlled CNN BPKD/SARD Pilot Protocol
+## CNN BPKD/SARD pilot
 
-The five historical seed-42 ablations reuse the same ResNet34 teacher and
-Fast-SCNN supervised/vanilla references. Their completed runs preserved the CNN
-data, task loss, metrics, and a 20-epoch physical-batch-16/accumulation-1 training
-protocol; only distillation settings and output routing differed. The canonical
-configs now use the standard 80-epoch budget with matched controls.
-
-| Variant | Config relative to experiments/ |
-| --- | --- |
-| BPKD body-only, weights 20/0 | bpkd/fast_scnn_from_resnet34_unet_body_only.yaml |
-| BPKD edge-only, weights 0/50 | bpkd/fast_scnn_from_resnet34_unet_edge_only.yaml |
-| BPKD combined, weights 20/50 | bpkd/fast_scnn_from_resnet34_unet_bpkd_w7.yaml |
-| Uniform SARD | sard/fast_scnn_sard_uniform_from_resnet34_unet.yaml |
-| Full SARD | sard/fast_scnn_sard_full_from_resnet34_unet.yaml |
-
-BPKD retains temperature 1, edge alpha 2, window 7, PRM and POM. SARD uses
-feature/distribution weights 1/0.5, noise alpha 0.5, density radius 7,
-projection width 256, and denoiser width 128. Full versus uniform changes
-only structure weights (2/1/1 versus 0/0/0). These are transferred starting
-values from another dataset protocol, not calibrated optima. No weights,
-features, or loss implementations are changed here. See [the SARD study
-protocol](sard/README.md#controlled-cnn-pilot) for feature alignment and
-artifact provenance. This single-seed pilot does not authorize further
-training or support hyperparameter selection using held-out test scores.
+Five seed-42 ResNet34 to Fast-SCNN ablations. Configs, weights, feature
+alignment, and the 20-epoch record versus the 80-epoch YAMLs:
+[SARD README](sard/README.md#controlled-cnn-pilot). Do not pick settings from test scores.
 
 ## Completed Controlled CNN Results
 
