@@ -13,11 +13,11 @@
 
 set -euo pipefail
 
-export WANDB_MODE="offline"
+export REPO_PATH="${REPO_PATH:-${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+cd -- "$REPO_PATH"
 
-exec bash scripts/train.sbatch \
-    python -m scripts.train \
-    --config experiments/baselines_benchmark/fast_scnn.yaml \
-    --devices 1 \
-    --fast-dev-run \
-    --offline
+if (( $# == 0 )); then
+    set -- experiments/baselines_benchmark/fast_scnn.yaml
+fi
+
+exec python3 -S scripts/experiment.py launch --smoke "$@"

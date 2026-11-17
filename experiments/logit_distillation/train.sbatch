@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Full SegFormer-B4 teacher to Fast-SCNN vanilla logit-distillation run.
+# Train the supplied experiment configs, or the default SegFormer-B4 KD config.
 # Submit through submit.sh so this job starts only after the smoke job succeeds.
-#SBATCH --job-name=segformer-b4-kd
+#SBATCH --job-name=seg-experiment
 #SBATCH --account=pl1200-01
 #SBATCH --partition=proxima
 #SBATCH --constraint=h100
@@ -14,11 +14,14 @@
 
 set -euo pipefail
 
-export WANDB_MODE="online"
+export REPO_PATH="${REPO_PATH:-${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+cd -- "$REPO_PATH"
+
+if (( $# == 0 )); then
+    set -- experiments/logit_distillation/fast_scnn_from_segformer_b4.yaml
+fi
+
 export WANDB_PROJECT="${WANDB_PROJECT:-seg-opt-logit-distillation}"
 export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-segformer-b4-to-fastscnn-clean-seed42}"
 
-exec bash scripts/train.sbatch \
-    python -m scripts.train \
-    --config experiments/logit_distillation/fast_scnn_from_segformer_b4.yaml \
-    --devices 1
+exec python3 -S scripts/experiment.py launch "$@"

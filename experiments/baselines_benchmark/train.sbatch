@@ -14,25 +14,21 @@
 
 set -euo pipefail
 
-case "$SLURM_ARRAY_TASK_ID" in
-    0) CONFIG="experiments/baselines_benchmark/fast_scnn.yaml" ;;
-    1) CONFIG="experiments/baselines_benchmark/resnet34_unet.yaml" ;;
-    2) CONFIG="experiments/baselines_benchmark/segformer_b0.yaml" ;;
-    3) CONFIG="experiments/baselines_benchmark/segformer_b2.yaml" ;;
-    4) CONFIG="experiments/baselines_benchmark/segformer_b4.yaml" ;;
-    5) CONFIG="experiments/baselines_benchmark/dinov3_vitl16.yaml" ;;
-    6) CONFIG="experiments/baselines_benchmark/mask2former_swinl.yaml" ;;
-    *)
-        echo "Unexpected array task: $SLURM_ARRAY_TASK_ID" >&2
-        exit 1
-        ;;
-esac
+export REPO_PATH="${REPO_PATH:-${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+cd -- "$REPO_PATH"
 
-export WANDB_MODE="online"
+if (( $# == 0 )); then
+    set -- \
+        experiments/baselines_benchmark/fast_scnn.yaml \
+        experiments/baselines_benchmark/resnet34_unet.yaml \
+        experiments/baselines_benchmark/segformer_b0.yaml \
+        experiments/baselines_benchmark/segformer_b2.yaml \
+        experiments/baselines_benchmark/segformer_b4.yaml \
+        experiments/baselines_benchmark/dinov3_vitl16.yaml \
+        experiments/baselines_benchmark/mask2former_swinl.yaml
+fi
+
 export WANDB_PROJECT="${WANDB_PROJECT:-seg-opt-clean-benchmarks}"
 export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-clean-aligned-seed42}"
 
-exec bash scripts/train.sbatch \
-    python -m scripts.train \
-    --config "$CONFIG" \
-    --devices 1
+exec python3 -S scripts/experiment.py launch "$@"

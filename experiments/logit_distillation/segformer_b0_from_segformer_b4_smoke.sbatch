@@ -14,12 +14,11 @@
 
 set -euo pipefail
 
-export WANDB_MODE="offline"
+export REPO_PATH="${REPO_PATH:-${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+cd -- "$REPO_PATH"
 
-exec bash scripts/train.sbatch \
-    python -m scripts.train \
-    --config experiments/logit_distillation/segformer_b0_from_segformer_b4.yaml \
-    --output-dir results/logit_distillation/smoke/segformer_b4_to_segformer_b0/seed42 \
-    --devices 1 \
-    --fast-dev-run \
-    --offline
+if (( $# == 0 )); then
+    set -- experiments/logit_distillation/segformer_b0_from_segformer_b4.yaml
+fi
+
+exec python3 -S scripts/experiment.py launch --smoke "$@"

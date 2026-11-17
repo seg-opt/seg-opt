@@ -10,6 +10,7 @@ from src.utils.artifacts import parameter_counts, sha256_file, to_builtin, write
 from src.utils.utils import (
     BASELINE_NAMES,
     TeacherConfig,
+    TrainingConfig,
     load_config,
     write_resolved_config,
 )
@@ -53,6 +54,46 @@ def test_resolved_configuration_round_trip(tmp_path):
     write_resolved_config(config, resolved_path)
 
     assert load_config(resolved_path) == config
+
+
+@pytest.mark.parametrize("seed", [0, 42, 43, 44, 2**32 - 1])
+def test_training_seed_accepts_uint32_without_changing_data_split(seed, tmp_path):
+    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+    split_manifest = Path(config.data.split_manifest)
+    split_checksum = sha256_file(split_manifest)
+
+    updated = replace(config, training=replace(config.training, seed=seed))
+    resolved_path = tmp_path / "config.yaml"
+    write_resolved_config(updated, resolved_path)
+    restored = load_config(resolved_path)
+
+    assert updated.training.seed == seed
+    assert config.training.seed == 42
+    assert updated.data is config.data
+    assert restored == updated
+    assert restored.data == config.data
+    assert Path(restored.data.split_manifest) == split_manifest
+    assert split_manifest.name == "split_seed42_aligned.json"
+    assert sha256_file(split_manifest) == split_checksum
+
+
+@pytest.mark.parametrize("seed", [-1, 2**32, True, 1.5, "43"])
+def test_training_seed_rejects_invalid_values(seed):
+    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+
+    with pytest.raises(ValueError, match="seed"):
+        replace(config.training, seed=seed)
+
+
+def test_training_seed_defaults_to_42(tmp_path):
+    training = TrainingConfig(
+        output_dir=str(tmp_path),
+        batch_size=1,
+        accumulate_grad_batches=16,
+        learning_rate=5.0e-4,
+    )
+
+    assert training.seed == 42
 
 
 def test_resnet101_teacher_preserves_resnet34_training_protocol():

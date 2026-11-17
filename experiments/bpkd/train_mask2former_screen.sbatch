@@ -15,20 +15,16 @@
 
 set -euo pipefail
 
-case "$SLURM_ARRAY_TASK_ID" in
-    0) CONFIG="experiments/bpkd/mask2former_vanilla_clean.yaml" ;;
-    1) CONFIG="experiments/bpkd/mask2former_bpkd_w7_clean.yaml" ;;
-    *)
-        echo "Unexpected array task: $SLURM_ARRAY_TASK_ID" >&2
-        exit 1
-        ;;
-esac
+export REPO_PATH="${REPO_PATH:-${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}}"
+cd -- "$REPO_PATH"
 
-export WANDB_MODE="online"
+if (( $# == 0 )); then
+    set -- \
+        experiments/bpkd/mask2former_vanilla_clean.yaml \
+        experiments/bpkd/mask2former_bpkd_w7_clean.yaml
+fi
+
 export WANDB_PROJECT="${WANDB_PROJECT:-seg-opt-bpkd}"
 export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-mask2former-born-again-clean-seed42}"
 
-exec bash scripts/train.sbatch \
-    python -m scripts.train \
-    --config "$CONFIG" \
-    --devices 1
+exec python3 -S scripts/experiment.py launch "$@"
