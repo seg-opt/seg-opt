@@ -62,7 +62,8 @@ def _write_manifest(
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def test_full_frame_transforms_have_fixed_shape_and_keep_alignment() -> None:
+@pytest.mark.parametrize("flip_probability", [0.0, 1.0])
+def test_full_frame_transforms_have_fixed_shape_and_keep_alignment(flip_probability) -> None:
     image = np.zeros((4, 6, 3), dtype=np.uint8)
     mask = np.zeros((4, 6), dtype=np.int64)
     image[1:3, 3:6, 0] = 255
@@ -82,7 +83,7 @@ def test_full_frame_transforms_have_fixed_shape_and_keep_alignment() -> None:
 
     random.seed(7)
     train_image, train_mask = TrainSegmentationTransform(
-        flip_probability=1.0,
+        flip_probability=flip_probability,
         brightness=0.0,
         contrast=0.0,
         gamma_min=1.0,
@@ -91,9 +92,11 @@ def test_full_frame_transforms_have_fixed_shape_and_keep_alignment() -> None:
     assert train_image.shape == (512, 768, 3)
     assert train_mask.shape == (512, 768)
     assert train_image[..., 0][train_mask == 3].mean() > 200
-    assert np.count_nonzero(train_mask[:, :384] == 3) > np.count_nonzero(
-        train_mask[:, 384:] == 3
-    )
+    assert train_image[..., 0][train_mask == 0].mean() < 30
+    assert (
+        np.count_nonzero(train_mask[:, :384] == 3)
+        > np.count_nonzero(train_mask[:, 384:] == 3)
+    ) == bool(flip_probability)
 
 
 def test_imagenet_processor_normalizes_without_resizing() -> None:
@@ -139,6 +142,30 @@ def test_manifest_validates_counts_disjointness_and_dataset_membership(tmp_path:
     )
     with pytest.raises(ValueError, match="must be disjoint"):
         load_split_manifest(path)
+
+
+@pytest.mark.parametrize("train,excluded,included,error", [
+    (["0001", "0003"], [], [], "frame IDs missing from the dataset"),
+    (["0001", "0002"], ["0002"], [], "quality-excluded frame IDs"),
+    (["0001"], [], [], "eligible dataset frame IDs"),
+    (["0001", "0002"], [], ["0003"], "explicitly included frame IDs"),
+])
+def test_manifest_rejects_invalid_dataset_membership(
+    tmp_path: Path, train, excluded, included, error,
+) -> None:
+    for frame_id in ("0001", "0002"):
+        _write_pair(tmp_path, frame_id)
+    (tmp_path / "excluded.txt").write_text("\n".join(excluded), encoding="utf-8")
+    (tmp_path / "included.txt").write_text("\n".join(included), encoding="utf-8")
+    path = tmp_path / "split.json"
+    _write_manifest(
+        path, train, [], [],
+        excluded_id_files=["excluded.txt"],
+        included_id_files=["included.txt"],
+    )
+
+    with pytest.raises(ValueError, match=error):
+        load_split_manifest(path, dataset_root=tmp_path)
 
 
 def test_dataset_loader_uses_manifest_order_and_exposes_metadata(tmp_path: Path) -> None:

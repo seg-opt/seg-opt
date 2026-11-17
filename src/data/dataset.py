@@ -8,22 +8,12 @@ from typing import Any, Callable, Iterable, Literal, Sequence
 import numpy as np
 import torch
 from PIL import Image
-from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
 
 
 DATASET_ROOT = "../../datasets/artificial_lunar_landscape"
-QUALITY_EXCLUDED_ID_FILES = (
-    "cam_anomaly_IDs.txt",
-    "ground_facing_IDs.txt",
-    "mismatch_IDs.txt",
-    "shadow_IDs.txt",
-)
-# Kept as a compatibility name. The benchmark uses the clean/aligned split.
-EXCLUDED_ID_FILES = QUALITY_EXCLUDED_ID_FILES
-INCLUDED_ID_FILES = ("top200_largerocks_IDs.txt",)
 ALIGNED_SPLIT_MANIFEST = (
     Path(__file__).resolve().parents[2]
     / "experiments"
@@ -88,35 +78,6 @@ def load_excluded_ids(id_files: Iterable[str | Path]) -> set[str]:
         with Path(id_file).open(encoding="utf-8") as file:
             excluded.update(line.strip() for line in file if line.strip())
     return excluded
-
-
-def filter_pairs(pairs: Sequence[Pair], excluded_ids: set[str]) -> list[Pair]:
-    return [pair for pair in pairs if _frame_id(pair[0]) not in excluded_ids]
-
-
-def split_pairs(
-    pairs: Sequence[Pair],
-    train_frac: float = 0.8,
-    val_frac: float = 0.1,
-    test_frac: float = 0.1,
-    seed: int = 42,
-) -> tuple[list[Pair], list[Pair], list[Pair]]:
-    """Create an ad-hoc split; canonical baselines use the checked-in manifest."""
-    fractions = np.asarray([train_frac, val_frac, test_frac], dtype=np.float64)
-    if not np.isclose(fractions.sum(), 1.0) or np.any(fractions <= 0):
-        raise ValueError("train/validation/test fractions must be positive and sum to 1")
-    trainval, test = train_test_split(
-        list(pairs),
-        test_size=test_frac,
-        random_state=seed,
-    )
-    val_frac_of_trainval = val_frac / (train_frac + val_frac)
-    train, validation = train_test_split(
-        trainval,
-        test_size=val_frac_of_trainval,
-        random_state=seed,
-    )
-    return train, validation, test
 
 
 def _validate_manifest_ids(
@@ -187,21 +148,9 @@ class SplitManifest:
 def _validate_manifest_against_dataset(
     manifest: SplitManifest,
     dataset_root: Path,
+    paired_ids: set[str],
 ) -> None:
-    pairs = find_pairs(
-        dataset_root / "images" / "render",
-        dataset_root / "images" / "ground",
-    )
-    paired_ids = {_frame_id(image_path) for image_path, _ in pairs}
     manifest_ids = set(manifest.all_ids)
-
-    missing = sorted(manifest_ids - paired_ids)
-    if missing:
-        raise ValueError(
-            f"split manifest references {len(missing)} frame IDs missing from the dataset: "
-            f"{missing[:5]}"
-        )
-
     excluded = load_excluded_ids(dataset_root / name for name in manifest.excluded_id_files)
     wrongly_included = sorted(manifest_ids & excluded)
     if wrongly_included:
@@ -248,19 +197,30 @@ def _benchmark_pair(dataset: DatasetName, dataset_root: Path, sample_id: str) ->
 
 
 def _validate_benchmark_manifest(manifest: SplitManifest, dataset_root: Path) -> None:
-    missing = [
-        sample_id
-        for sample_id in manifest.all_ids
-        if not all(
-            path.is_file()
-            for path in _benchmark_pair(manifest.dataset, dataset_root, sample_id)
+    if manifest.dataset == "lunar":
+        pairs = find_pairs(
+            dataset_root / "images" / "render",
+            dataset_root / "images" / "ground",
         )
-    ]
+        paired_ids = {_frame_id(image_path) for image_path, _ in pairs}
+    else:
+        paired_ids = {
+            sample_id
+            for sample_id in manifest.all_ids
+            if all(
+                path.is_file()
+                for path in _benchmark_pair(manifest.dataset, dataset_root, sample_id)
+            )
+        }
+    missing = sorted(set(manifest.all_ids) - paired_ids)
     if missing:
+        kind = "frame IDs" if manifest.dataset == "lunar" else "samples"
         raise ValueError(
-            f"split manifest references {len(missing)} samples missing from the dataset: "
+            f"split manifest references {len(missing)} {kind} missing from the dataset: "
             f"{missing[:5]}"
         )
+    if manifest.dataset == "lunar":
+        _validate_manifest_against_dataset(manifest, dataset_root, paired_ids)
 
 
 def _validate_lusnar_manifest(manifest: SplitManifest, dataset_root: Path) -> None:
@@ -350,9 +310,7 @@ def load_split_manifest(
             f"!= {manifest.counts!r}"
         )
     if dataset_root is not None:
-        if dataset == "lunar":
-            _validate_manifest_against_dataset(manifest, Path(dataset_root))
-        elif dataset == "lusnar":
+        if dataset == "lusnar":
             _validate_lusnar_manifest(manifest, Path(dataset_root))
         else:
             _validate_benchmark_manifest(manifest, Path(dataset_root))
@@ -521,12 +479,15 @@ def load_datasets(
     if dataset == "lusnar" and mask_variant != "ground":
         raise ValueError("LUSNAR only supports mask_variant='ground'")
     dataset_root = Path(dataset_root)
-    manifest_dataset = load_split_manifest(split_manifest).dataset
-    if manifest_dataset != dataset:
+    manifest = load_split_manifest(split_manifest)
+    if manifest.dataset != dataset:
         raise ValueError(
-            f"split manifest is for {manifest_dataset!r}, but the config uses {dataset!r}"
+            f"split manifest is for {manifest.dataset!r}, but the config uses {dataset!r}"
         )
-    manifest = load_split_manifest(split_manifest, dataset_root=dataset_root)
+    if dataset == "lusnar":
+        _validate_lusnar_manifest(manifest, dataset_root)
+    else:
+        _validate_benchmark_manifest(manifest, dataset_root)
     if dataset == "lunar":
         pairs = find_pairs(
             dataset_root / "images" / "render",

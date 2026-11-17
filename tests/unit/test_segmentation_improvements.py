@@ -1,50 +1,9 @@
-import random
-
-import numpy as np
 import pytest
 import torch
 
-from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
 from src.models.segmentation import make_segmentation_head
 from src.train.losses import SegmentationLoss
 from src.utils.utils import load_config
-
-
-def test_train_transform_keeps_image_mask_alignment_at_full_frame_size():
-    random.seed(7)
-    image = np.zeros((12, 18, 3), dtype=np.uint8)
-    mask = np.zeros((12, 18), dtype=np.int64)
-    image[3:9, 10:16, 0] = 255
-    mask[3:9, 10:16] = 3
-    transform = TrainSegmentationTransform(
-        flip_probability=0,
-        brightness=0,
-        contrast=0,
-        gamma_min=1,
-        gamma_max=1,
-    )
-
-    transformed_image, transformed_mask = transform(image, mask)
-
-    assert transformed_image.shape == (512, 768, 3)
-    assert transformed_mask.shape == (512, 768)
-    assert np.count_nonzero(transformed_mask == 3) > 0
-    assert transformed_image[..., 0][transformed_mask == 3].mean() > 200
-    assert transformed_image[..., 0][transformed_mask == 0].mean() < 30
-
-
-def test_eval_transform_is_deterministic_and_uses_full_frame_size():
-    image = np.zeros((10, 15, 3), dtype=np.uint8)
-    mask = np.zeros((10, 15), dtype=np.int64)
-
-    transform = EvalSegmentationTransform()
-    transformed_image, transformed_mask = transform(image, mask)
-    repeated_image, repeated_mask = transform(image, mask)
-
-    assert transformed_image.shape == (512, 768, 3)
-    assert transformed_mask.shape == (512, 768)
-    np.testing.assert_array_equal(transformed_image, repeated_image)
-    np.testing.assert_array_equal(transformed_mask, repeated_mask)
 
 
 def test_segmentation_loss_rewards_correct_rare_class_predictions_and_ignores_padding():
