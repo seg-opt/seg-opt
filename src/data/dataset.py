@@ -521,12 +521,17 @@ def load_datasets(
     if dataset == "lusnar" and mask_variant != "ground":
         raise ValueError("LUSNAR only supports mask_variant='ground'")
     dataset_root = Path(dataset_root)
-    manifest_dataset = load_split_manifest(split_manifest).dataset
-    if manifest_dataset != dataset:
+    manifest = load_split_manifest(split_manifest)
+    if manifest.dataset != dataset:
         raise ValueError(
-            f"split manifest is for {manifest_dataset!r}, but the config uses {dataset!r}"
+            f"split manifest is for {manifest.dataset!r}, but the config uses {dataset!r}"
         )
-    manifest = load_split_manifest(split_manifest, dataset_root=dataset_root)
+    if dataset == "lunar":
+        _validate_manifest_against_dataset(manifest, dataset_root)
+    elif dataset == "lusnar":
+        _validate_lusnar_manifest(manifest, dataset_root)
+    else:
+        _validate_benchmark_manifest(manifest, dataset_root)
     if dataset == "lunar":
         pairs = find_pairs(
             dataset_root / "images" / "render",
