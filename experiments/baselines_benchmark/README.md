@@ -35,7 +35,8 @@ sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
 After all runs succeed, summarize them with:
 
 ```bash
-uv run python -m scripts.summarize_baselines_benchmark
+uv run python -m scripts.summarize_baselines_benchmark \
+  --results-root results/canonical/baselines_benchmark
 ```
 
 Select the teacher solely by validation mIoU; use small-rock and kernel-7

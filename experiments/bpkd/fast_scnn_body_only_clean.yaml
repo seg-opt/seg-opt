@@ -11,7 +11,7 @@ data:
 loss: {cross_entropy_weight: 1.0, dice_weight: 0.5, ignore_index: 255}
 metrics: {trimap_kernel_size: 7}
 training:
-  output_dir: results/bpkd/fast_scnn_clean/body_only/seed42
+  output_dir: results/canonical/bpkd/fast_scnn_clean/body_only/seed42
   epochs: 80
   batch_size: 2
   accumulate_grad_batches: 8
@@ -26,7 +26,7 @@ distillation:
   method: bpkd
   teacher:
     config_path: experiments/bpkd/mask2former_teacher_clean.yaml
-    checkpoint_path: results/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt
+    checkpoint_path: results/canonical/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt
   spatial_stride: 8
   body_weight: 20.0
   edge_weight: 0.0

@@ -18,7 +18,7 @@ loss: {cross_entropy_weight: 1.0, dice_weight: 0.5, ignore_index: 255}
 metrics: {trimap_kernel_size: 7}
 
 training:
-  output_dir: results/logit_distillation/segformer_b0_from_segformer_b4/seed42
+  output_dir: results/canonical/logit_distillation/segformer_b0_from_segformer_b4/seed42
   epochs: 80
   batch_size: 8
   accumulate_grad_batches: 2
@@ -34,7 +34,7 @@ distillation:
   method: vanilla
   teacher:
     config_path: experiments/baselines_benchmark/segformer_b4.yaml
-    checkpoint_path: results/baselines_benchmark/segformer_b4/seed42/checkpoints/best.ckpt
+    checkpoint_path: results/canonical/baselines_benchmark/segformer_b4/seed42/checkpoints/best.ckpt
   spatial_stride: 8
   vanilla_weight: 1.0
   vanilla_temperature: 1.0

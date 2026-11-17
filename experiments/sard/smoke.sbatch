@@ -28,7 +28,7 @@ bash scripts/train.sbatch \
 
 # The repository is mounted read-only in the container, so the student config
 # that points at the smoke teacher is written under results/.
-sed "s#results/baselines_benchmark/segformer_b4/seed42/checkpoints/best.ckpt#$smoke_dir/teacher/checkpoints/best.ckpt#" \
+sed "s#results/canonical/baselines_benchmark/segformer_b4/seed42/checkpoints/best.ckpt#$smoke_dir/teacher/checkpoints/best.ckpt#" \
     experiments/sard/fast_scnn_sard_full_from_segformer_b4.yaml \
     > "$smoke_dir/sard_full.yaml"
 

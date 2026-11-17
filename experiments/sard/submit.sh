@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Submit smoke -> teacher -> four-run student array, each gated on afterok.
-# Pass --skip-teacher when results/baselines_benchmark/segformer_b4/seed42
+# Pass --skip-teacher when results/canonical/baselines_benchmark/segformer_b4/seed42
 # already holds a trained checkpoint.
 set -euo pipefail
 

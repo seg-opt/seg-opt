@@ -23,7 +23,7 @@ The legacy `submit.sh` schedules student smoke/full arrays only; it does not
 train a teacher. Before submitting students, train from the current 80-epoch
 teacher config or adopt a teacher only after full protocol/artifact verification.
 Its standalone checkpoint reference is
-`results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt`,
+`results/canonical/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt`,
 not the historical `lunar_teacher_80e` artifact. Matching the 80-epoch budget
 alone does not authorize reusing that historical checkpoint. Its full protocol
 and artifacts are currently not readable by our HPC user; do not adopt, copy,

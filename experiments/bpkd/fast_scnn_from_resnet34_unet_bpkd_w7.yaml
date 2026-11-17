@@ -17,7 +17,7 @@ loss: {cross_entropy_weight: 1.0, dice_weight: 0.5, ignore_index: 255}
 metrics: {trimap_kernel_size: 7}
 
 training:
-  output_dir: results/bpkd/fast_scnn_from_resnet34_unet/bpkd_w7/seed42
+  output_dir: results/canonical/bpkd/fast_scnn_from_resnet34_unet/bpkd_w7/seed42
   epochs: 80
   batch_size: 16
   accumulate_grad_batches: 1
@@ -33,7 +33,7 @@ distillation:
   method: bpkd
   teacher:
     config_path: experiments/baselines_benchmark/resnet34_unet.yaml
-    checkpoint_path: results/baselines_benchmark/resnet34_unet/seed42/checkpoints/best.ckpt
+    checkpoint_path: results/canonical/baselines_benchmark/resnet34_unet/seed42/checkpoints/best.ckpt
   spatial_stride: 8
   body_weight: 20.0
   edge_weight: 50.0

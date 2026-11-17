@@ -16,7 +16,9 @@ snapshots and resolved artifact configs preserve the original protocol;
 updating canonical YAML defaults must not rewrite those records. Do not mix
 budgets in controlled comparisons or reuse unmatched teacher/control artifacts.
 Use the managed runner's unique outputs, not direct training into historical
-standalone output directories.
+standalone output directories. Canonical standalone outputs now live under
+`results/canonical/`; earlier `results/<family>/...` directories retain their
+recorded protocols.
 
 ## Clean baseline benchmark
 

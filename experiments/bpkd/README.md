@@ -42,7 +42,7 @@ teacher would be a stronger subsequent test of distillation capacity.
 
 ## Fast-SCNN suite
 
-After `results/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt`
+After `results/canonical/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt`
 exists, submit the eight-run array:
 
 ```bash
