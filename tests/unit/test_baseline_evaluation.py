@@ -1,4 +1,11 @@
 import json
+import random
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import lightning as L
+import numpy as np
+from PIL import Image
 from dataclasses import replace
 from pathlib import Path
 
@@ -8,6 +15,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
 from scripts.evaluate import (
+    _segmentation_sample_writer,
     _distillation_artifact,
     evaluate_checkpoint,
     prepare_artifact_directory,
@@ -111,6 +119,7 @@ def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path):
     )
 
     saved = json.loads((tmp_path / "metrics.json").read_text(encoding="utf-8"))
+    assert len(list((tmp_path / "segmentation_samples").glob("*.png"))) == 2
     assert saved == artifact
     assert artifact["schema_version"] == 2
     assert artifact["run_kind"] == "smoke"
@@ -157,3 +166,65 @@ def test_distillation_artifact_copies_teacher_config_and_hashes_provenance(tmp_p
     assert metadata is not None
     assert metadata["teacher"]["checkpoint_sha256"]
     assert metadata["teacher"]["config_sha256"]
+
+
+@pytest.mark.parametrize("size", [2, 12])
+def test_segmentation_samples_are_reproducible_and_match_predictions(tmp_path, size):
+    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+    config = replace(config, data=replace(config.data, class_names=CLASS_NAMES))
+
+    class PreviewDataset(TinyDataset):
+        def __len__(self):
+            return size
+
+        def __getitem__(self, index):
+            sample = super().__getitem__(index)
+            sample["labels"] = torch.zeros(8, 12, dtype=torch.long)
+            sample["labels"][0, 0] = 255
+            return sample
+
+    model = TinyBaseline()
+    with torch.no_grad():
+        model.projection.weight.zero_()
+        model.projection.bias.zero_()
+        model.projection.bias[0] = 1
+    module = BaselineModule(
+        model, SegmentationLoss(4), head_learning_rate=5e-4, class_names=CLASS_NAMES
+    )
+    module.train()
+    dataset = PreviewDataset()
+    loader = DataLoader(dataset, batch_size=2)
+    components = SimpleNamespace(test_dataset=dataset, test_loader=loader, module=module)
+    trainer = SimpleNamespace(
+        is_global_zero=True,
+        world_size=1,
+    )
+    test_trainer = L.Trainer(
+        accelerator="cpu", devices=1, logger=False, enable_checkpointing=False,
+        enable_progress_bar=False,
+    )
+    for run in ("first", "second"):
+        state = random.getstate()
+        module._test_sample_writer = _segmentation_sample_writer(
+            config, components, tmp_path / run, trainer, "full"
+        )
+        assert random.getstate() == state
+        with patch.object(model, "forward", wraps=model.forward) as forward:
+            test_trainer.test(module, dataloaders=loader, verbose=False)
+        assert forward.call_count == len(loader)
+        module._test_sample_writer = None
+    first = tmp_path / "first" / "segmentation_samples"
+    second = tmp_path / "second" / "segmentation_samples"
+    paths = sorted(first.glob("*.png"))
+    expected = random.Random(config.training.seed).sample(range(size), min(5, size))
+    assert {path.name for path in paths} == {f"sample_{index:06d}.png" for index in expected}
+    for path in paths:
+        assert path.read_bytes() == (second / path.name).read_bytes()
+        with Image.open(path) as image:
+            pixels = np.asarray(image)
+            assert image.format == "PNG"
+            assert image.width >= 36
+            np.testing.assert_array_equal(pixels[24:32, 13:24], pixels[24:32, 25:36])
+            np.testing.assert_array_equal(pixels[24, 12], [128, 128, 128])
+    with pytest.raises(FileExistsError):
+        _segmentation_sample_writer(config, components, tmp_path / "first", trainer, "full")

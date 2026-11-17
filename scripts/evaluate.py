@@ -1,4 +1,6 @@
 import argparse
+import colorsys
+import random
 import shutil
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -6,9 +8,12 @@ from typing import Any
 
 import lightning as L
 import torch
+import numpy as np
+from PIL import Image, ImageDraw
 
 from src.baselines import BaselineComponents, build_baseline
 from src.data.dataset import MASK_VARIANTS, MaskVariant
+from src.data.processors import IMAGENET_MEAN, IMAGENET_STD
 from src.utils.artifacts import (
     parameter_counts,
     sha256_file,
@@ -145,6 +150,73 @@ def _distillation_artifact(config: BaselineConfig) -> dict[str, Any] | None:
     }
 
 
+def _segmentation_sample_writer(
+    config: BaselineConfig,
+    components: BaselineComponents,
+    output_dir: str | Path,
+    trainer: L.Trainer,
+    run_kind: str,
+):
+    if not trainer.is_global_zero:
+        return None
+    dataset = components.test_dataset
+    count = (len(dataset) + trainer.world_size - 1) // trainer.world_size
+    if run_kind == "smoke":
+        count = min(count, components.test_loader.batch_size)
+    indices = random.Random(config.training.seed).sample(range(count), min(5, count))
+    directory = Path(output_dir) / "segmentation_samples"
+    directory.mkdir(parents=True, exist_ok=False)
+    class_names = config.data.class_names
+    palette = np.array([
+        tuple(round(channel * 255) for channel in colorsys.hsv_to_rgb(
+            index / len(class_names), 0.75, 0.95
+        ))
+        for index in range(len(class_names))
+    ], dtype=np.uint8)
+    mean = torch.tensor(IMAGENET_MEAN)[:, None, None]
+    std = torch.tensor(IMAGENET_STD)[:, None, None]
+    offset = 0
+
+    def save_batch(batch, predictions):
+        nonlocal offset
+        for position in range(len(predictions)):
+            index = offset + position
+            if index not in indices:
+                continue
+            pixels = batch["pixel_values"][position]
+            labels = batch["labels"][position].cpu().numpy()
+            prediction = predictions[position].cpu().numpy()
+            image = ((pixels.cpu() * std + mean).clamp(0, 1) * 255).round().byte()
+            image = image.permute(1, 2, 0).numpy()
+            reference = np.full((*labels.shape, 3), 128, dtype=np.uint8)
+            valid = (labels >= 0) & (labels < len(class_names))
+            reference[valid] = palette[labels[valid]]
+            height, width = labels.shape
+            canvas = Image.new(
+                "RGB",
+                (max(3 * width, 300), height + 30 + 18 * (len(class_names) + 1)),
+                "white",
+            )
+            draw = ImageDraw.Draw(canvas)
+            for column, (title, panel) in enumerate((
+                ("Input", image), ("Ground truth", reference), ("Prediction", palette[prediction])
+            )):
+                canvas.paste(Image.fromarray(panel), (column * width, 24))
+                draw.text((column * width + 2, 4), title, fill="black")
+            for class_index, name in enumerate((*class_names, "Ignored")):
+                y = height + 30 + class_index * 18
+                color = (
+                    tuple(int(value) for value in palette[class_index])
+                    if class_index < len(class_names) else (128, 128, 128)
+                )
+                draw.rectangle((4, y, 16, y + 12), fill=color)
+                draw.text((22, y), name, fill="black")
+            canvas.save(directory / f"sample_{index:06d}.png")
+        offset += len(predictions)
+
+    return save_batch
+
+
 def evaluate_checkpoint(
     config: BaselineConfig,
     components: BaselineComponents,
@@ -191,12 +263,18 @@ def evaluate_checkpoint(
         verbose=False,
     )
     validation = components.module.latest_metrics("val")
-    trainer.test(
-        components.module,
-        dataloaders=components.test_loader,
-        ckpt_path=str(checkpoint_path),
-        verbose=False,
+    components.module._test_sample_writer = _segmentation_sample_writer(
+        config, components, output_dir, trainer, run_kind
     )
+    try:
+        trainer.test(
+            components.module,
+            dataloaders=components.test_loader,
+            ckpt_path=str(checkpoint_path),
+            verbose=False,
+        )
+    finally:
+        components.module._test_sample_writer = None
     test = components.module.latest_metrics("test")
 
     config_path = output_dir / "config.yaml"

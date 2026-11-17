@@ -128,6 +128,7 @@ class BaselineModule(L.LightningModule):
             trimap_kernel_size=trimap_kernel_size,
         )
         self._latest_metrics: dict[str, dict[str, Any]] = {}
+        self._test_sample_writer = None
         # A subclass (DistillationModule) may add nn.Module constructor
         # arguments.  Ignore their conventional names here too because this
         # call inspects the active subclass frame under Lightning.
@@ -217,7 +218,10 @@ class BaselineModule(L.LightningModule):
         images = batch["pixel_values"]
         labels = batch["labels"]
         loss, scores = self._loss_and_scores(images, labels)
-        self.metrics.update(stage, scores.argmax(dim=1), labels)
+        predictions = scores.argmax(dim=1)
+        self.metrics.update(stage, predictions, labels)
+        if stage == "test" and self._test_sample_writer is not None:
+            self._test_sample_writer(batch, predictions)
         self._log_loss(
             stage,
             loss,
