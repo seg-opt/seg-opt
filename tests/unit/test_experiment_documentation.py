@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 
 def test_historical_miou_deltas_document_unrounded_receipts():
     readme = Path("experiments/README.md").read_text(encoding="utf-8")
@@ -24,3 +26,18 @@ def test_adopted_teacher_instructions_use_one_completion_barrier_job():
     assert "`pipeline --after-job JOB_ID`" in instructions
     assert "one successful completion barrier" in instructions
     assert "both the teacher and paired supervised baseline" in instructions
+
+
+@pytest.mark.parametrize(
+    ("relative", "reference"),
+    [
+        ("experiments/README.md", "results/canonical/"),
+        ("experiments/baselines_benchmark/README.md", "--results-root results/canonical/baselines_benchmark"),
+        ("experiments/bpkd/README.md", "results/canonical/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt"),
+        ("experiments/strong_teacher_distillation/README.md", "results/canonical/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt"),
+        ("experiments/sard/smoke.sbatch", "results/canonical/baselines_benchmark/segformer_b4/seed42/checkpoints/best.ckpt"),
+        ("experiments/sard/submit.sh", "results/canonical/baselines_benchmark/segformer_b4/seed42"),
+    ],
+)
+def test_future_run_guidance_uses_canonical_output_paths(relative, reference):
+    assert reference in Path(relative).read_text(encoding="utf-8")

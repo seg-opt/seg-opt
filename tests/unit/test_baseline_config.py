@@ -12,6 +12,7 @@ from src.utils.utils import (
     TeacherConfig,
     TrainingConfig,
     load_config,
+    load_yaml,
     write_resolved_config,
 )
 
@@ -121,7 +122,14 @@ def test_canonical_full_run_configs_use_80_epochs(family):
 
     assert config_paths
     for path in config_paths:
-        assert load_config(path).training.epochs == 80, str(path)
+        config = load_config(path)
+        assert config.training.epochs == 80, str(path)
+        assert load_yaml(path)["training"]["output_dir"].startswith("results/canonical/"), str(path)
+        if config.distillation is not None:
+            teacher = load_config(config.distillation.teacher.config_path)
+            assert Path(config.distillation.teacher.checkpoint_path) == (
+                Path(teacher.training.output_dir) / "checkpoints" / "best.ckpt"
+            ), str(path)
 
 
 def test_cnn_distillation_uses_canonical_teacher_and_matched_student_protocol():
@@ -229,8 +237,9 @@ def test_segformer_b4_to_fast_scnn_logit_distillation_config():
         "baselines_benchmark",
         "segformer_b4.yaml",
     )
-    assert Path(config.distillation.teacher.checkpoint_path).parts[-6:] == (
+    assert Path(config.distillation.teacher.checkpoint_path).parts[-7:] == (
         "results",
+        "canonical",
         "baselines_benchmark",
         "segformer_b4",
         "seed42",
@@ -339,8 +348,9 @@ def test_segformer_b4_to_b0_logit_distillation_config():
         "baselines_benchmark",
         "segformer_b4.yaml",
     )
-    assert Path(config.distillation.teacher.checkpoint_path).parts[-6:] == (
+    assert Path(config.distillation.teacher.checkpoint_path).parts[-7:] == (
         "results",
+        "canonical",
         "baselines_benchmark",
         "segformer_b4",
         "seed42",
