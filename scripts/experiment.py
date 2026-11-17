@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -495,15 +493,31 @@ def compare(paths):
             if reference["data"] != metrics["data"]:
                 report["warnings"].append(f"{directory}: data/split protocol differs")
             for key in ("teacher", "method", "settings"):
-                if (reference.get("distillation") or {}).get(key) != (metrics.get("distillation") or {}).get(key):
+                previous = (reference.get("distillation") or {}).get(key)
+                current = (metrics.get("distillation") or {}).get(key)
+                if key == "teacher":
+                    hashes = ("config_sha256", "checkpoint_sha256")
+                    if (reference.get("distillation") is not None or metrics.get("distillation") is not None) and any(
+                            not isinstance(teacher, dict) or any(teacher.get(name) is None for name in hashes)
+                            for teacher in (previous, current)):
+                        report["warnings"].append(f"{directory}: distillation teacher identity unverified")
+                        continue
+                    previous = {name: previous[name] for name in hashes} if previous is not None else None
+                    current = {name: current[name] for name in hashes} if current is not None else None
+                if previous != current:
                     report["warnings"].append(f"{directory}: distillation {key} differs")
             if settings is not None and reference_protocol is not None:
                 for key in ("batch_size", "accumulate_grad_batches", "epochs", "learning_rate", "precision", "seed",
                             "weight_decay", "warmup_fraction", "backbone_learning_rate"):
                     if settings.get("training", {}).get(key) != reference_protocol.get("training", {}).get(key):
                         report["warnings"].append(f"{directory}: training {key} differs")
-                for key in ("data", "loss", "distillation", "metrics"):
-                    if settings.get(key) != reference_protocol.get(key):
+                for key in ("model", "data", "loss", "distillation", "metrics"):
+                    previous = reference_protocol.get(key)
+                    current = settings.get(key)
+                    if key == "distillation":
+                        previous = {name: value for name, value in previous.items() if name != "teacher"} if previous is not None else None
+                        current = {name: value for name, value in current.items() if name != "teacher"} if current is not None else None
+                    if previous != current:
                         report["warnings"].append(f"{directory}: {key} protocol differs")
         else:
             reference = metrics
@@ -522,7 +536,7 @@ def launch(args):
     root = Path(os.environ.get("REPO_PATH", os.environ.get("SLURM_SUBMIT_DIR", Path(__file__).resolve().parents[1]))).resolve()
     environment = os.environ.copy()
     environment["REPO_PATH"] = str(root)
-    for name, default in (("MODE", "offline"), ("PROJECT", "seg-opt"), ("GROUP", Path(config).stem)):
+    for name, default in (("MODE", "offline"), ("PROJECT", "seg-opt"), ("RUN_GROUP", Path(config).stem)):
         key = "WANDB_" + name
         value = environment.setdefault(key, default)
         for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
