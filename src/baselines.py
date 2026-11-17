@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from src.data.dataloaders import make_dataloaders
 from src.data.dataset import (
     LunarDataset,
+    MaskVariant,
     SplitManifest,
     load_datasets,
     load_split_manifest,
@@ -38,8 +39,13 @@ class BaselineComponents:
 def build_baseline(
     config: BaselineConfig,
     *,
+    sample_limits: tuple[int | None, int | None, int | None] = (None, None, None),
+    mask_variant: MaskVariant | None = None,
     include_distillation: bool = True,
 ) -> BaselineComponents:
+    selected_mask_variant = (
+        config.data.mask_variant if mask_variant is None else mask_variant
+    )
     processor = SegmentationImageProcessor()
     train_transform = TrainSegmentationTransform(
         height=config.data.image_height,
@@ -54,9 +60,12 @@ def build_baseline(
         processor,
         dataset_root=config.data.dataset_root,
         split_manifest=config.data.split_manifest,
-        mask_variant=config.data.mask_variant,
+        mask_variant=selected_mask_variant,
         train_transform=train_transform,
         eval_transform=eval_transform,
+        max_train_samples=sample_limits[0],
+        max_val_samples=sample_limits[1],
+        max_test_samples=sample_limits[2],
         dataset=config.data.dataset,
     )
     manifest = train_dataset.split_manifest
@@ -83,6 +92,7 @@ def build_baseline(
     model.train()
     criterion = SegmentationLoss(
         num_classes=config.num_classes,
+        class_weights=None,
         cross_entropy_weight=config.loss.cross_entropy_weight,
         dice_weight=config.loss.dice_weight,
         ignore_index=config.loss.ignore_index,
