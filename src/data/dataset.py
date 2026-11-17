@@ -15,6 +15,15 @@ from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTran
 
 
 DATASET_ROOT = "../../datasets/artificial_lunar_landscape"
+QUALITY_EXCLUDED_ID_FILES = (
+    "cam_anomaly_IDs.txt",
+    "ground_facing_IDs.txt",
+    "mismatch_IDs.txt",
+    "shadow_IDs.txt",
+)
+# Kept as a compatibility name. The benchmark uses the clean/aligned split.
+EXCLUDED_ID_FILES = QUALITY_EXCLUDED_ID_FILES
+INCLUDED_ID_FILES = ("top200_largerocks_IDs.txt",)
 ALIGNED_SPLIT_MANIFEST = (
     Path(__file__).resolve().parents[2]
     / "experiments"

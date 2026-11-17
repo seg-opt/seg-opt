@@ -6,6 +6,7 @@ import torch
 from PIL import Image
 from torch.utils.data import TensorDataset
 
+from src.data import dataset as data
 from src.data.dataloaders import make_dataloader, make_dataloaders, move_batch_to_device
 from src.data.dataset import (
     LunarDataset,
@@ -118,6 +119,17 @@ def test_split_is_deterministic_disjoint_and_complete():
 def test_split_rejects_invalid_fractions(fractions):
     with pytest.raises(ValueError, match="positive and sum to 1"):
         split_pairs([], *fractions)
+
+
+def test_exclusion_file_constants():
+    assert data.QUALITY_EXCLUDED_ID_FILES == (
+        "cam_anomaly_IDs.txt",
+        "ground_facing_IDs.txt",
+        "mismatch_IDs.txt",
+        "shadow_IDs.txt",
+    )
+    assert data.EXCLUDED_ID_FILES is data.QUALITY_EXCLUDED_ID_FILES
+    assert data.INCLUDED_ID_FILES == ("top200_largerocks_IDs.txt",)
 
 
 def test_dataloader_policies_seed_and_device_transfer():
