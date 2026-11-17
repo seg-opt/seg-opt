@@ -148,15 +148,13 @@ alignment, and the 20-epoch record versus the 80-epoch YAMLs:
 
 ## Completed Controlled CNN Results
 
-These are completed historical 20-epoch studies, not new run instructions.
-All student checkpoints were selected by validation mIoU; held-out test
-metrics are reported without selecting teachers, methods, or weights by
-test performance. Checkpoint/config/split hashes, identical data metadata,
-and matched training settings (excluding only output routing) were verified
-in each study's audited `analysis.json`. The fixed split SHA256 is
+Historical 20-epoch results, not run instructions. Student checkpoints use
+validation mIoU; test scores do not select teachers, methods, or weights.
+`analysis.json` records verified checkpoint/config/split hashes and matched
+data/training settings, excluding output routing. The fixed split SHA256 is
 `e7486b858ee776695b9e5fbdd561ac072e37999d59e801e406c8a299d778c8ab`.
-Per-study receipts retain artifact hashes, run/job IDs and resolved config
-provenance without requiring a particular account or artifact-root path.
+Receipts retain hashes, run/job IDs, and resolved configs independent of account
+or artifact root.
 
 ### Paired ResNet34 Vanilla KD
 
