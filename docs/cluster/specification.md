@@ -58,4 +58,4 @@ repository. Eagle exposes the runtime on allocated compute nodes rather than the
 login node. SLURM jobs detect `singularity` first, fall back to `apptainer`, and
 fail if neither is available.
 
-See [the container runbook](containers.md) for the complete workflow.
+See [the container runbook](../development/containers.md) for the complete workflow.
