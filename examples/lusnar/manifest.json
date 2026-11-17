@@ -1,0 +1,193 @@
+{
+  "dataset": "LuSNAR",
+  "source": "https://github.com/zqyu9/LuSNAR-dataset",
+  "sample_count": 6,
+  "samples": [
+    {
+      "scene": "Moon_2",
+      "timestamp": "1693278966537283840",
+      "files": [
+        {
+          "path": "1693278966537283840/rgb.png",
+          "bytes": 1624923,
+          "sha256": "7a95fab6a43793dc5fe39e149f2f51bd67be2923842fb9ad534b0ff644000e56"
+        },
+        {
+          "path": "1693278966537283840/label.png",
+          "bytes": 4255,
+          "sha256": "972087242caafe91014fc594fffe8a2a8ba4c9ea9c06af5766b66844eaf9051d"
+        },
+        {
+          "path": "1693278966537283840/depth.pfm",
+          "bytes": 4194320,
+          "sha256": "3f288db454dd05105809f5f3161c9881d475f94d05aeec53d3380ffc42e05bcd"
+        },
+        {
+          "path": "1693278966537283840/stereo_rgb.png",
+          "bytes": 1647100,
+          "sha256": "304d133890d1f110a6aca07aa9d4af638db85310c8a2de3d43f7831cf21abc30"
+        },
+        {
+          "path": "1693278966537283840/lidar.txt",
+          "bytes": 1318390,
+          "sha256": "de2da7c89c58385638d836a96b5bfff46ea76a323b1e4a67c02de354a388ffa8"
+        }
+      ]
+    },
+    {
+      "scene": "Moon_2",
+      "timestamp": "1693278856745011456",
+      "files": [
+        {
+          "path": "1693278856745011456/rgb.png",
+          "bytes": 1709329,
+          "sha256": "8a036c8ca882be2b8780fd83d3edb6a73e95d2cd707cbb5986d65471e5fd8f1f"
+        },
+        {
+          "path": "1693278856745011456/label.png",
+          "bytes": 4070,
+          "sha256": "87405253d7314223b01b5465fa1e9e9491739615ac2a91ddbf4db3e9f3614759"
+        },
+        {
+          "path": "1693278856745011456/depth.pfm",
+          "bytes": 4194320,
+          "sha256": "0200bec5dbb5db33b47b137dd0b3b8ac0310efc5ac974092a8b5f03a49814ef2"
+        },
+        {
+          "path": "1693278856745011456/stereo_rgb.png",
+          "bytes": 1713309,
+          "sha256": "e9c27d75a9c7bfd6947a7709f7756383a1d88c6bf8897dc574046a11b5a0869a"
+        },
+        {
+          "path": "1693278856745011456/lidar.txt",
+          "bytes": 1126576,
+          "sha256": "eecf70ac5d160d8664a239c7e1930ba3e1d01ebbc51f8af2102d5c13b30fd6df"
+        }
+      ]
+    },
+    {
+      "scene": "Moon_2",
+      "timestamp": "1693278841998512384",
+      "files": [
+        {
+          "path": "1693278841998512384/rgb.png",
+          "bytes": 1717817,
+          "sha256": "7d55a80e96e8862c9ba92276bd566bddd76acb8fbefb3019c77d60e8ef4dd3d2"
+        },
+        {
+          "path": "1693278841998512384/label.png",
+          "bytes": 3923,
+          "sha256": "cb92bac038570b1b56451daf4bd8d470fc67604b8ae8530620d5d8da56e7e803"
+        },
+        {
+          "path": "1693278841998512384/depth.pfm",
+          "bytes": 4194320,
+          "sha256": "a5046c7d593afb863c212dc5881d73d43fbc775f62981a88a150529dded9f6e2"
+        },
+        {
+          "path": "1693278841998512384/stereo_rgb.png",
+          "bytes": 1708388,
+          "sha256": "0ef061e176f091e811b6a64b98f475a2e462bb8a1d9070b28a09ffbfef7e3b89"
+        },
+        {
+          "path": "1693278841998512384/lidar.txt",
+          "bytes": 1225491,
+          "sha256": "f78031e2b9ca26a9fb41b40a57c382f68c622dde9c699914dd21a214e033be10"
+        }
+      ]
+    },
+    {
+      "scene": "Moon_1",
+      "timestamp": "1693274736427078656",
+      "files": [
+        {
+          "path": "1693274736427078656/rgb.png",
+          "bytes": 1759867,
+          "sha256": "6f91d3e911287273ecf6018ad04331624b87e444e592a59655c32dd852c80f18"
+        },
+        {
+          "path": "1693274736427078656/label.png",
+          "bytes": 5501,
+          "sha256": "935e9e6a63f9f53f4ae6b6e74c283936fa8369a94d428ce733d389b7af519e87"
+        },
+        {
+          "path": "1693274736427078656/depth.pfm",
+          "bytes": 4194320,
+          "sha256": "ddc7b64d5604e518d385187891c46acc842945e4d6d4c9ab9a269f3586534f19"
+        },
+        {
+          "path": "1693274736427078656/stereo_rgb.png",
+          "bytes": 1764473,
+          "sha256": "3c29a4b5566dc9733cc29aba6fb7cd1dca2032f566134163b1f650e7b6079e3d"
+        },
+        {
+          "path": "1693274736427078656/lidar.txt",
+          "bytes": 1287411,
+          "sha256": "e2dff9ad450aeaaf8d033757c1b78cba7bab26b2775761d0ffa34d0222eb6e72"
+        }
+      ]
+    },
+    {
+      "scene": "Moon_5",
+      "timestamp": "1693360269552084480",
+      "files": [
+        {
+          "path": "1693360269552084480/rgb.png",
+          "bytes": 1992636,
+          "sha256": "f775abd1c03fc267afde2827260f828136340678d88aaa59e04b9fd7b4a07c0c"
+        },
+        {
+          "path": "1693360269552084480/label.png",
+          "bytes": 6837,
+          "sha256": "ec07db4a059f0228e6f140e813a7ad8a7e7bc1212764d008200c4bd9e9a2d4ec"
+        },
+        {
+          "path": "1693360269552084480/depth.pfm",
+          "bytes": 4194320,
+          "sha256": "3d1b33ef9f57919c81210c0accbe2e0b9bc17e4fe62e9d0669a027bb3cadd810"
+        },
+        {
+          "path": "1693360269552084480/stereo_rgb.png",
+          "bytes": 1989134,
+          "sha256": "138b428300e1b4de3cc7dbd1556612979ed444f99608adc24f84d232b3665a24"
+        },
+        {
+          "path": "1693360269552084480/lidar.txt",
+          "bytes": 1267434,
+          "sha256": "1dc35cb412f2b27761425c5ee377fbfdb6db2c0dcbb7a92545881d6b9afc70e0"
+        }
+      ]
+    },
+    {
+      "scene": "Moon_7",
+      "timestamp": "1693385337183294464",
+      "files": [
+        {
+          "path": "1693385337183294464/rgb.png",
+          "bytes": 1841157,
+          "sha256": "9a7cc582c1252581778a2fc8c36307638b728d0292fe03dbcbff3411b6fb2668"
+        },
+        {
+          "path": "1693385337183294464/label.png",
+          "bytes": 4788,
+          "sha256": "8469e64986d475d17b0bc944050e0a1ad9f1bcd2bba109094e829f7d1dec5562"
+        },
+        {
+          "path": "1693385337183294464/depth.pfm",
+          "bytes": 4194320,
+          "sha256": "cc3793c0d2d599747fbce34b743f1819a81a23a394de48f2a3a98fc67a577c05"
+        },
+        {
+          "path": "1693385337183294464/stereo_rgb.png",
+          "bytes": 1841898,
+          "sha256": "e4f57c02b3edd20bd0178cb3a3fdbe6ca9172ef72bf6179dc0e182d83a7701ba"
+        },
+        {
+          "path": "1693385337183294464/lidar.txt",
+          "bytes": 1223460,
+          "sha256": "4b9ca4368c0cede4465331e2356f7b49e1b2f03a17eb4949be8ae8a9c685bb6c"
+        }
+      ]
+    }
+  ]
+}
