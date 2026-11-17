@@ -23,7 +23,6 @@ class SegmentationImageProcessor:
     def __call__(
         self,
         images: Sequence[Any],
-        segmentation_maps: Sequence[Any] | None = None,
         return_tensors: str | None = None,
         **_: Any,
     ) -> dict[str, torch.Tensor]:
@@ -35,13 +34,4 @@ class SegmentationImageProcessor:
             for image in images
         ]
         encoded = {"pixel_values": torch.stack(pixels)}
-
-        if segmentation_maps is not None:
-            labels = [
-                torch.from_numpy(np.asarray(mask).copy()).long()
-                for mask in segmentation_maps
-            ]
-            if any(label.shape != pixels[0].shape[-2:] for label in labels):
-                raise ValueError("segmentation maps must match the image spatial shape")
-            encoded["labels"] = torch.stack(labels)
         return encoded
