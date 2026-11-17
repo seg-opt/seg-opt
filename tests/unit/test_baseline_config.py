@@ -85,7 +85,7 @@ def test_training_seed_rejects_invalid_values(seed):
         replace(config.training, seed=seed)
 
 
-def test_training_defaults_to_seed42_and_100_epochs(tmp_path):
+def test_training_defaults_to_seed42_and_80_epochs(tmp_path):
     training = TrainingConfig(
         output_dir=str(tmp_path),
         batch_size=1,
@@ -94,7 +94,7 @@ def test_training_defaults_to_seed42_and_100_epochs(tmp_path):
     )
 
     assert training.seed == 42
-    assert training.epochs == 100
+    assert training.epochs == 80
 
 
 def test_resnet101_teacher_preserves_resnet34_training_protocol():
@@ -116,12 +116,12 @@ def test_resnet101_teacher_preserves_resnet34_training_protocol():
     "family",
     ["baselines_benchmark", "logit_distillation", "bpkd", "sard", "strong_teacher_distillation"],
 )
-def test_canonical_full_run_configs_use_100_epochs(family):
+def test_canonical_full_run_configs_use_80_epochs(family):
     config_paths = sorted((Path("experiments") / family).glob("*.yaml"))
 
     assert config_paths
     for path in config_paths:
-        assert load_config(path).training.epochs == 100, str(path)
+        assert load_config(path).training.epochs == 80, str(path)
 
 
 def test_cnn_distillation_uses_canonical_teacher_and_matched_student_protocol():
@@ -130,7 +130,7 @@ def test_cnn_distillation_uses_canonical_teacher_and_matched_student_protocol():
     teacher = load_config(teacher_path)
     student = load_config("experiments/logit_distillation/fast_scnn_from_resnet101_unet.yaml")
 
-    assert baseline.training.epochs == teacher.training.epochs == student.training.epochs == 100
+    assert baseline.training.epochs == teacher.training.epochs == student.training.epochs == 80
     assert student.model == baseline.model
     assert student.data == baseline.data == teacher.data
     assert student.loss == baseline.loss == teacher.loss
@@ -150,12 +150,12 @@ def test_cnn_distillation_uses_canonical_teacher_and_matched_student_protocol():
 
 
 @pytest.mark.parametrize("student_name", ["fast_scnn", "segformer_b0"])
-def test_strong_teacher_configs_do_not_reuse_the_historical_80_epoch_checkpoint(student_name):
+def test_strong_teacher_configs_do_not_reuse_the_unverified_historical_checkpoint(student_name):
     root = Path("experiments/strong_teacher_distillation")
     teacher = load_config(root / "teacher_dinov3_mask2former.yaml")
     student = load_config(root / f"{student_name}_logit_kd.yaml")
 
-    assert teacher.training.epochs == student.training.epochs == 100
+    assert teacher.training.epochs == student.training.epochs == 80
     assert Path(teacher.training.output_dir).parts[-3:] == (
         "strong_teacher_distillation", "teacher_dinov3_mask2former", "seed42"
     )
