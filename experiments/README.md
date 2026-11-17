@@ -16,11 +16,9 @@ unique runner outputs, not historical standalone directories.
 
 ## Clean baseline benchmark
 
-[`baselines_benchmark/`](baselines_benchmark/) compares the Fast-SCNN student
-with six teacher candidates on clean masks and the aligned seed-42 split.
-The default benchmark remains seven models; ResNet101 is an optional,
-explicitly selected extra teacher. Establish a positive validation teacher
-margin before distillation.
+[`baselines_benchmark/`](baselines_benchmark/) compares Fast-SCNN and six teachers
+on clean masks with the aligned seed-42 split. ResNet101-U-Net is an optional
+extra outside the seven-run array. Require a positive validation teacher margin.
 
 ## BPKD
 
