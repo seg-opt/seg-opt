@@ -138,3 +138,114 @@ rather than fixed legacy smoke directories. Legacy submitters delegate to
 managed `submit`; inspect its printed workflow directory and `status` for
 job IDs instead of relying on the former two-job output format. Prefer
 `pipeline` when KD requires the validation gate.
+
+## Controlled CNN Vanilla Protocol
+
+The historical CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
+Fast-SCNN using vanilla logit KD:
+
+| Teacher | Config relative to experiments/ |
+| --- | --- |
+| ResNet34-U-Net | logit_distillation/fast_scnn_from_resnet34_unet.yaml |
+| ResNet101-U-Net | logit_distillation/fast_scnn_from_resnet101_unet.yaml |
+
+Both preserve the supervised Fast-SCNN model, clean masks, aligned seed-42
+split, 512 x 768 images, augmentation, CE 1.0 + Dice 0.5 task loss, and
+kernel-7 trimap metrics. Historical training uses 20 epochs, physical batch
+16, accumulation 1, learning rate 5e-4, weight decay 0.05, warmup fraction
+0.05, bf16 precision, and seed 42. KD uses temperature 1, weight 1, and a
+stride-8 loss grid; this grid is not the student's output resolution.
+Teacher config/checkpoint references and student output directories are
+distinct for each teacher. Only student weights are needed at inference.
+
+Use the shared `pipeline` interface with completed, hash-verified supervised
+student and teacher artifacts. Its validation mIoU and small-rock IoU gate
+must pass before KD; test scores are reporting only. Student seed overrides
+43 and 44 leave the split and seed-42 teacher fixed. Batch 8 with accumulation
+2 is not BatchNorm-equivalent to physical batch 16, so SegFormer runs using
+that setting are not controlled CNN loss comparisons. These checked-in
+20-epoch configs describe historical experiments, not a new full-run budget.
+Future full runs target 100 epochs with matched supervised controls under a
+separate validation-based protocol; none are submitted by this packaging task.
+
+## Controlled CNN BPKD/SARD Pilot Protocol
+
+The five historical seed-42 ablations reuse the same ResNet34 teacher and
+Fast-SCNN supervised/vanilla references. All preserve the CNN data, task
+loss, metrics, and 20-epoch physical-batch-16/accumulation-1 training protocol
+above; only the distillation method/settings and output routing differ.
+
+| Variant | Config relative to experiments/ |
+| --- | --- |
+| BPKD body-only, weights 20/0 | bpkd/fast_scnn_from_resnet34_unet_body_only.yaml |
+| BPKD edge-only, weights 0/50 | bpkd/fast_scnn_from_resnet34_unet_edge_only.yaml |
+| BPKD combined, weights 20/50 | bpkd/fast_scnn_from_resnet34_unet_bpkd_w7.yaml |
+| Uniform SARD | sard/fast_scnn_sard_uniform_from_resnet34_unet.yaml |
+| Full SARD | sard/fast_scnn_sard_full_from_resnet34_unet.yaml |
+
+BPKD retains temperature 1, edge alpha 2, window 7, PRM and POM. SARD uses
+feature/distribution weights 1/0.5, noise alpha 0.5, density radius 7,
+projection width 256, and denoiser width 128. Full versus uniform changes
+only structure weights (2/1/1 versus 0/0/0). These are transferred starting
+values from another dataset protocol, not calibrated optima. No weights,
+features, or loss implementations are changed here. See [the SARD study
+protocol](sard/README.md#controlled-cnn-pilot) for feature alignment and
+artifact provenance. This single-seed pilot does not authorize further
+training or support hyperparameter selection using held-out test scores.
+
+## Completed Controlled CNN Results
+
+These are completed historical 20-epoch studies, not new run instructions.
+All student checkpoints were selected by validation mIoU; held-out test
+metrics are reported without selecting teachers, methods, or weights by
+test performance. Checkpoint/config/split hashes, identical data metadata,
+and matched training settings (excluding only output routing) were verified
+in each study's audited `analysis.json`. The fixed split SHA256 is
+`e7486b858ee776695b9e5fbdd561ac072e37999d59e801e406c8a299d778c8ab`.
+Per-study receipts retain artifact hashes, run/job IDs and resolved config
+provenance without requiring a particular account or artifact-root path.
+
+### Paired ResNet34 Vanilla KD
+
+The supervised and KD Fast-SCNN arms share student seeds 42, 43, and 44,
+with the same split and fixed seed-42 ResNet34 teacher. Scores are
+percentages; gains are percentage points (pp).
+
+| Student seed | Supervised test mIoU | ResNet34 KD test mIoU | Paired gain (pp) |
+| --- | --- | --- | --- |
+| 42 | 83.314508 | 84.047002 | +0.732493 |
+| 43 | 82.659167 | 83.230829 | +0.571662 |
+| 44 | 83.037347 | 83.572072 | +0.534725 |
+
+Mean paired test mIoU gain is **+0.612960 pp**, with sample SD
+**0.105153 pp**. Mean paired test small-rock IoU gain is **+1.319371 pp**
+(sample SD 0.233414 pp). All three mIoU and small-rock pairs improve;
+the kernel-7 trimap gain is not consistent across seeds (seed 44 decreases).
+Three student seeds with one fixed teacher are not a statistical-significance
+claim or a replication across teacher seeds.
+
+### Larger Teacher, Single Seed
+
+| KD teacher, student seed 42 | Validation mIoU | Test mIoU | Test small-rock IoU | Test trimap small-rock IoU |
+| --- | --- | --- | --- | --- |
+| ResNet34-U-Net | 83.299100 | 84.047002 | 67.634463 | 48.056686 |
+| ResNet101-U-Net | 83.378357 | 83.859318 | 67.133361 | 47.118571 |
+
+The larger teacher's KD student has +0.079256 pp validation mIoU but
+-0.359535 pp validation small-rock IoU versus the smaller teacher's student.
+Reported test mIoU is -0.187683 pp. This single-seed, mixed validation result
+does not establish that a larger teacher distills better.
+
+### BPKD/SARD Pilot
+
+The [completed seven-row pilot and offline loss audit](sard/README.md#completed-cnn-pilot-results)
+compare the seed-42 baseline and vanilla reference with five transferred,
+untuned BPKD/SARD settings. Uniform SARD's reported test mIoU is
++0.771719 pp versus baseline and only +0.039226 pp versus vanilla, a
+near-tie rather than evidence of superiority. Full SARD and all three BPKD
+settings regress on validation as well as test. Large logged scalar KD/task
+ratios motivate validation-based normalization/weight checks, not a causal
+claim about gradients or a general failure claim about either method.
+No additional training, hyperparameter calibration, or sweep was performed
+during reporting. Any future 100-epoch study needs matched controls and a
+protocol fixed using validation before viewing new test outcomes.
