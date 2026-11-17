@@ -6,6 +6,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+from scripts.train import _checkpoint_callback
 from src.train.losses import SegmentationLoss
 from src.train.metrics import SegmentationMetrics
 from src.train.trainer import (
@@ -207,11 +208,7 @@ def test_create_trainer_selects_one_best_miou_checkpoint_and_accumulates(
         accumulate_grad_batches=8,
         enable_wandb=False,
     )
-    checkpoint = next(
-        callback
-        for callback in trainer.callbacks
-        if isinstance(callback, ModelCheckpoint)
-    )
+    checkpoint = _checkpoint_callback(trainer)
 
     assert checkpoint.monitor == "val/miou"
     assert checkpoint.mode == "max"
@@ -273,3 +270,26 @@ def test_smoke_mode_runs_one_batch_and_preserves_best_checkpoint(tmp_path) -> No
         criterion=SegmentationLoss(4),
     )
     assert restored(torch.randn(1, 3, 8, 12)).shape == (1, 4, 8, 12)
+
+
+def test_periodic_checkpoints_keep_optimizer_and_scheduler_every_five_epochs(tmp_path):
+    module = make_module()
+    loader = DataLoader(TinyDataset(), batch_size=2)
+    trainer = create_trainer(
+        tmp_path, max_epochs=10, precision="32-true", devices=1,
+        enable_wandb=False,
+    )
+    trainer.fit(module, train_dataloaders=loader, val_dataloaders=loader)
+    directory = tmp_path / "checkpoints"
+    assert {path.name for path in directory.glob("*.ckpt")} == {
+        "best.ckpt", "epoch-004.ckpt", "epoch-009.ckpt",
+    }
+    for epoch in (4, 9):
+        checkpoint = torch.load(directory / f"epoch-{epoch:03d}.ckpt", weights_only=False)
+        assert checkpoint["epoch"] == epoch
+        assert checkpoint["optimizer_states"]
+        assert checkpoint["lr_schedulers"]
+        assert "model.encoder.weight" in checkpoint["state_dict"]
+    best = torch.load(directory / "best.ckpt", weights_only=False)
+    assert "optimizer_states" not in best
+    assert _checkpoint_callback(trainer).monitor == "val/miou"
