@@ -180,17 +180,14 @@ def load_model(
     ignore_index: int = 255,
 ) -> SemanticSegmenter:
     if model_name not in BASELINE_MODEL_NAMES:
-        allowed = ", ".join(BASELINE_MODEL_NAMES)
-        raise ValueError(f"unsupported baseline {model_name!r}; choose one of: {allowed}")
+        raise ValueError(f"unsupported baseline {model_name!r}")
 
     names = _class_names(num_classes, class_names)
     use_pretrained = model_name != "fast_scnn" if pretrained is None else pretrained
 
     if model_name == "fast_scnn":
         if use_pretrained:
-            raise ValueError(
-                "Fast-SCNN does not have pretrained weights; set pretrained=false"
-            )
+            raise ValueError("fast_scnn has no pretrained weights")
         return FastSCNN(len(names), class_names=names)
     if model_name == "resnet34_unet":
         return load_resnet34_unet(names, pretrained=use_pretrained)

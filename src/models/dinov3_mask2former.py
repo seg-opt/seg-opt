@@ -101,8 +101,7 @@ class DINOv3PyramidBackbone(nn.Module):
         expected = grid_size[0] * grid_size[1]
         if tokens.shape[1] != expected:
             raise ValueError(
-                "DINOv3 patch-token count does not match the input dimensions: "
-                f"expected {expected}, got {tokens.shape[1]}"
+                f"expected {expected} patch tokens, got {tokens.shape[1]}"
             )
         tokens = norm(tokens)
         return tokens.transpose(1, 2).reshape(

@@ -119,8 +119,7 @@ class DINOv3Segmenter(SemanticSegmenter):
         expected_tokens = grid_height * grid_width
         if patch_tokens.shape[1] != expected_tokens:
             raise ValueError(
-                "DINOv3 patch-token count does not match the input dimensions: "
-                f"expected {expected_tokens}, got {patch_tokens.shape[1]}"
+                f"expected {expected_tokens} patch tokens, got {patch_tokens.shape[1]}"
             )
         return patch_tokens.transpose(1, 2).reshape(
             pixel_values.shape[0],
@@ -203,10 +202,7 @@ class Mask2FormerSegmenter(SemanticSegmenter):
         for sample_index, label in enumerate(labels):
             present = torch.unique(label[label != self.ignore_index])
             if not present.numel():
-                raise ValueError(
-                    "Mask2Former cannot train on an all-ignore target "
-                    f"(sample {sample_index})"
-                )
+                raise ValueError(f"all-ignore target at sample {sample_index}")
             if present.min() < 0 or present.max() >= self.num_classes:
                 raise ValueError("labels contain a class outside the configured range")
             present = present.to(dtype=torch.long)
