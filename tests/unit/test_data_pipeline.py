@@ -4,7 +4,7 @@ import torch
 from PIL import Image
 from torch.utils.data import TensorDataset
 
-from src.data.dataloaders import make_dataloader, make_dataloaders, move_batch_to_device
+from src.data.dataloaders import make_dataloader, make_dataloaders
 from src.data.dataset import (
     LunarDataset,
     _mask_from_ground,
@@ -99,7 +99,3 @@ def test_dataloader_policies_seed_and_device_transfer():
         torch.cat([batch[0] for batch in train])[:4],
         torch.cat([batch[0] for batch in repeat]),
     )
-
-    batch = {"pixel_values": torch.ones(2, 3), "labels": torch.zeros(2, dtype=torch.long)}
-    moved = move_batch_to_device(batch, torch.device("cpu"))
-    assert all(tensor.device.type == "cpu" for tensor in moved.values())

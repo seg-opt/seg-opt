@@ -59,10 +59,3 @@ def make_dataloaders(
         num_workers=num_workers,
     )
     return train_loader, val_loader, test_loader
-
-
-def move_batch_to_device(
-    batch: dict[str, torch.Tensor],
-    device: torch.device,
-) -> dict[str, torch.Tensor]:
-    return {name: tensor.to(device, non_blocking=True) for name, tensor in batch.items()}
