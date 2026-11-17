@@ -13,6 +13,7 @@ from src.data.dataset import (
     filter_pairs,
     find_pairs,
     load_excluded_ids,
+    split_pairs,
 )
 
 
@@ -96,6 +97,27 @@ def test_dataset_batches_processing_and_returns_expected_tensors(tmp_path):
     assert batch["pixel_values"].dtype == torch.float32
     assert batch["labels"].shape == (4, 2, 3)
     assert batch["labels"].dtype == torch.int64
+
+
+def test_split_is_deterministic_disjoint_and_complete():
+    pairs = [(Path(f"image{i}.png"), Path(f"mask{i}.png")) for i in range(20)]
+
+    first = split_pairs(pairs, seed=123)
+    second = split_pairs(pairs, seed=123)
+    train, val, test = first
+
+    assert first == second
+    assert (len(train), len(val), len(test)) == (16, 2, 2)
+    assert set(train).isdisjoint(val)
+    assert set(train).isdisjoint(test)
+    assert set(val).isdisjoint(test)
+    assert set(train + val + test) == set(pairs)
+
+
+@pytest.mark.parametrize("fractions", [(0.8, 0.1, 0.2), (0, 0.5, 0.5)])
+def test_split_rejects_invalid_fractions(fractions):
+    with pytest.raises(ValueError, match="positive and sum to 1"):
+        split_pairs([], *fractions)
 
 
 def test_dataloader_policies_seed_and_device_transfer():
