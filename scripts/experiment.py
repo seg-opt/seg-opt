@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -499,8 +497,13 @@ def compare(paths):
                 current = (metrics.get("distillation") or {}).get(key)
                 if key == "teacher":
                     hashes = ("config_sha256", "checkpoint_sha256")
-                    previous = {name: previous.get(name) for name in hashes} if previous is not None else None
-                    current = {name: current.get(name) for name in hashes} if current is not None else None
+                    if (reference.get("distillation") is not None or metrics.get("distillation") is not None) and any(
+                            not isinstance(teacher, dict) or any(teacher.get(name) is None for name in hashes)
+                            for teacher in (previous, current)):
+                        report["warnings"].append(f"{directory}: distillation teacher identity unverified")
+                        continue
+                    previous = {name: previous[name] for name in hashes} if previous is not None else None
+                    current = {name: current[name] for name in hashes} if current is not None else None
                 if previous != current:
                     report["warnings"].append(f"{directory}: distillation {key} differs")
             if settings is not None and reference_protocol is not None:
@@ -512,8 +515,8 @@ def compare(paths):
                     previous = reference_protocol.get(key)
                     current = settings.get(key)
                     if key == "distillation":
-                        previous = {name: value for name, value in (previous or {}).items() if name != "teacher"}
-                        current = {name: value for name, value in (current or {}).items() if name != "teacher"}
+                        previous = {name: value for name, value in previous.items() if name != "teacher"} if previous is not None else None
+                        current = {name: value for name, value in current.items() if name != "teacher"} if current is not None else None
                     if previous != current:
                         report["warnings"].append(f"{directory}: {key} protocol differs")
         else:
