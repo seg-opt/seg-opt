@@ -220,19 +220,9 @@ Do not use these held-out test scores to select future temperatures or weights.
 
 The immutable campaign remains on Eagle under
 `/mnt/storage_6/project_data/pl1200-01/issue-15-cnn-kd/campaign-100e-20261109/`.
-That historical storage name and its recorded source/config hashes do not
-require a separate experiment family in the current repository. Preserve all
-manifests, checkpoints, configs, split files and W&B logs there.
+Preserve all manifests, checkpoints, configs, split files and W&B logs there.
 
-For further approved studies under the current 80-epoch norm, use the existing
-canonical paths above and the snapshot-owned runner. Set
-`WANDB_ENTITY=ogrodowskijedrzej-put`, project `seg-opt`, and the appropriate logging
-mode; credentials stay on HPC. Pass
-`--seed` to `submit` or `pipeline`, not a new epoch-specific config copy. For
-adopted teacher artifacts, connect `pipeline --after-job` to a successful
-completion barrier for both the teacher and paired supervised baseline. Do not
-depend only on the teacher or bypass the validation gate. BPKD/SARD calibration
-is not part of this completed campaign and has not been submitted.
+BPKD/SARD calibration is not part of this completed campaign and has not been submitted.
 
 ## Validation-only Transfer Diagnosis (2026-11-10)
 
