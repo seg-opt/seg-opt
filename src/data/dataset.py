@@ -8,12 +8,22 @@ from typing import Any, Callable, Iterable, Literal, Sequence
 import numpy as np
 import torch
 from PIL import Image
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
 
 
 DATASET_ROOT = "../../datasets/artificial_lunar_landscape"
+QUALITY_EXCLUDED_ID_FILES = (
+    "cam_anomaly_IDs.txt",
+    "ground_facing_IDs.txt",
+    "mismatch_IDs.txt",
+    "shadow_IDs.txt",
+)
+# Kept as a compatibility name. The benchmark uses the clean/aligned split.
+EXCLUDED_ID_FILES = QUALITY_EXCLUDED_ID_FILES
+INCLUDED_ID_FILES = ("top200_largerocks_IDs.txt",)
 ALIGNED_SPLIT_MANIFEST = (
     Path(__file__).resolve().parents[2]
     / "experiments"
@@ -78,6 +88,35 @@ def load_excluded_ids(id_files: Iterable[str | Path]) -> set[str]:
         with Path(id_file).open(encoding="utf-8") as file:
             excluded.update(line.strip() for line in file if line.strip())
     return excluded
+
+
+def filter_pairs(pairs: Sequence[Pair], excluded_ids: set[str]) -> list[Pair]:
+    return [pair for pair in pairs if _frame_id(pair[0]) not in excluded_ids]
+
+
+def split_pairs(
+    pairs: Sequence[Pair],
+    train_frac: float = 0.8,
+    val_frac: float = 0.1,
+    test_frac: float = 0.1,
+    seed: int = 42,
+) -> tuple[list[Pair], list[Pair], list[Pair]]:
+    """Create an ad-hoc split; canonical baselines use the checked-in manifest."""
+    fractions = np.asarray([train_frac, val_frac, test_frac], dtype=np.float64)
+    if not np.isclose(fractions.sum(), 1.0) or np.any(fractions <= 0):
+        raise ValueError("train/validation/test fractions must be positive and sum to 1")
+    trainval, test = train_test_split(
+        list(pairs),
+        test_size=test_frac,
+        random_state=seed,
+    )
+    val_frac_of_trainval = val_frac / (train_frac + val_frac)
+    train, validation = train_test_split(
+        trainval,
+        test_size=val_frac_of_trainval,
+        random_state=seed,
+    )
+    return train, validation, test
 
 
 def _validate_manifest_ids(

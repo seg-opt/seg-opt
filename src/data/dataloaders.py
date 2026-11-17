@@ -51,3 +51,10 @@ def make_dataloaders(
             (train_dataset, True), (val_dataset, False), (test_dataset, False)
         )
     )
+
+
+def move_batch_to_device(
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+) -> dict[str, torch.Tensor]:
+    return {name: tensor.to(device, non_blocking=True) for name, tensor in batch.items()}

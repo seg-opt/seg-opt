@@ -237,6 +237,27 @@ def test_bpkd_prm_and_pom_are_independently_switchable(prm, pom):
     assert student.grad is not None
 
 
+@pytest.mark.parametrize(
+    ("body_weight", "edge_weight", "enabled"),
+    [(0, 0, False), (1, 0, True), (0, 1, True), (1, 1, True)],
+)
+def test_bpkd_enabled_tracks_weights(body_weight, edge_weight, enabled):
+    loss = BPKDLoss(num_classes=2, body_weight=body_weight, edge_weight=edge_weight)
+
+    assert loss.enabled is enabled
+    loss.body_weight = loss.edge_weight = 0
+    assert loss.enabled is False
+
+
+@pytest.mark.parametrize("weight", [0, 1])
+def test_pixel_kd_enabled_tracks_weight(weight):
+    loss = PixelWiseKDLoss(num_classes=2, weight=weight)
+
+    assert loss.enabled is bool(weight)
+    loss.weight = 1 - weight
+    assert loss.enabled is bool(1 - weight)
+
+
 def test_zero_weight_kd_returns_a_differentiable_zero_without_resize_work():
     student = torch.randn(1, 2, 5, 5, requires_grad=True)
     teacher = torch.randn(1, 2, 5, 5)

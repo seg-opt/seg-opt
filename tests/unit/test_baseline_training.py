@@ -95,6 +95,19 @@ def test_metrics_ignore_labels_and_export_confusion_matrix() -> None:
     json.dumps(result)
 
 
+@pytest.mark.parametrize("stage", ["train", "val", "test"])
+@pytest.mark.parametrize("trimap_kernel_size", [None, 3])
+def test_metrics_compute_matches_snapshot(stage, trimap_kernel_size):
+    metrics = SegmentationMetrics(CLASS_NAMES, trimap_kernel_size=trimap_kernel_size)
+    targets = torch.tensor([[[0, 1, 255], [2, 3, 0], [1, 2, 3]]])
+    predictions = targets.masked_fill(targets == 255, 0)
+    metrics.update(stage, predictions, targets)
+    expected, confusion = metrics.snapshot(stage)
+
+    torch.testing.assert_close(metrics.compute(stage), expected)
+    torch.testing.assert_close(metrics.snapshot(stage)[1], confusion)
+
+
 def test_metrics_export_gt_trimap_diagnostics_without_changing_standard_iou() -> None:
     metrics = SegmentationMetrics(CLASS_NAMES, trimap_kernel_size=3)
     targets = torch.zeros(1, 5, 5, dtype=torch.long)

@@ -1,15 +1,20 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
 from PIL import Image
 from torch.utils.data import TensorDataset
 
-from src.data.dataloaders import make_dataloader, make_dataloaders
+from src.data import dataset as data
+from src.data.dataloaders import make_dataloader, make_dataloaders, move_batch_to_device
 from src.data.dataset import (
     LunarDataset,
     _mask_from_ground,
+    filter_pairs,
     find_pairs,
     load_excluded_ids,
+    split_pairs,
 )
 
 
@@ -62,13 +67,20 @@ def test_exclusions_and_mask_decoding(tmp_path):
     second = tmp_path / "second.txt"
     first.write_text("0002\n0004\n")
     second.write_text("0004\n")
+    pairs = [
+        (Path(f"render{index:04d}.png"), Path(f"ground{index:04d}.png"))
+        for index in range(1, 5)
+    ]
+
     excluded = load_excluded_ids([first, second])
+    filtered = filter_pairs(pairs, excluded)
     ground = np.array(
         [[[0, 0, 0], [0, 0, 255], [0, 255, 0], [255, 0, 0], [9, 1, 1]]],
         dtype=np.uint8,
     )
 
     assert excluded == {"0002", "0004"}
+    assert [image.stem for image, _ in filtered] == ["render0001", "render0003"]
     # Dataset colors are blue=large rock, green=small rock, and red=sky.
     np.testing.assert_array_equal(_mask_from_ground(ground), [[0, 3, 2, 1, 0]])
 
@@ -88,6 +100,38 @@ def test_dataset_batches_processing_and_returns_expected_tensors(tmp_path):
     assert batch["labels"].dtype == torch.int64
 
 
+def test_split_is_deterministic_disjoint_and_complete():
+    pairs = [(Path(f"image{i}.png"), Path(f"mask{i}.png")) for i in range(20)]
+
+    first = split_pairs(pairs, seed=123)
+    second = split_pairs(pairs, seed=123)
+    train, val, test = first
+
+    assert first == second
+    assert (len(train), len(val), len(test)) == (16, 2, 2)
+    assert set(train).isdisjoint(val)
+    assert set(train).isdisjoint(test)
+    assert set(val).isdisjoint(test)
+    assert set(train + val + test) == set(pairs)
+
+
+@pytest.mark.parametrize("fractions", [(0.8, 0.1, 0.2), (0, 0.5, 0.5)])
+def test_split_rejects_invalid_fractions(fractions):
+    with pytest.raises(ValueError, match="positive and sum to 1"):
+        split_pairs([], *fractions)
+
+
+def test_exclusion_file_constants():
+    assert data.QUALITY_EXCLUDED_ID_FILES == (
+        "cam_anomaly_IDs.txt",
+        "ground_facing_IDs.txt",
+        "mismatch_IDs.txt",
+        "shadow_IDs.txt",
+    )
+    assert data.EXCLUDED_ID_FILES is data.QUALITY_EXCLUDED_ID_FILES
+    assert data.INCLUDED_ID_FILES == ("top200_largerocks_IDs.txt",)
+
+
 def test_dataloader_policies_seed_and_device_transfer():
     dataset = TensorDataset(torch.arange(5))
     train, val, test = make_dataloaders(dataset, dataset, dataset, 2, num_workers=0, seed=17)
@@ -99,3 +143,7 @@ def test_dataloader_policies_seed_and_device_transfer():
         torch.cat([batch[0] for batch in train])[:4],
         torch.cat([batch[0] for batch in repeat]),
     )
+
+    batch = {"pixel_values": torch.ones(2, 3), "labels": torch.zeros(2, dtype=torch.long)}
+    moved = move_batch_to_device(batch, torch.device("cpu"))
+    assert all(tensor.device.type == "cpu" for tensor in moved.values())
