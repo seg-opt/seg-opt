@@ -64,34 +64,6 @@ class SemanticSegmenter(nn.Module):
         )
 
 
-def make_segmentation_head(
-    in_channels: int,
-    num_classes: int,
-    head_type: str = "linear",
-    batch_norm: bool = True,
-    hidden_channels: int = 256,
-    dropout: float = 0.1,
-) -> nn.Module:
-    if head_type == "linear":
-        layers: list[nn.Module] = []
-        if batch_norm:
-            layers.append(nn.BatchNorm2d(in_channels))
-        layers.append(nn.Conv2d(in_channels, num_classes, kernel_size=1))
-        return nn.Sequential(*layers)
-    if head_type == "lightweight":
-        groups = min(32, hidden_channels)
-        while hidden_channels % groups:
-            groups -= 1
-        return nn.Sequential(
-            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.GroupNorm(groups, hidden_channels),
-            nn.GELU(),
-            nn.Dropout2d(dropout),
-            nn.Conv2d(hidden_channels, num_classes, kernel_size=1),
-        )
-    raise ValueError(f"unsupported segmentation head {head_type!r}")
-
-
 class DINOv3Segmenter(SemanticSegmenter):
     """Linear semantic-segmentation head over dense DINOv3 features."""
 
@@ -100,11 +72,6 @@ class DINOv3Segmenter(SemanticSegmenter):
         backbone: nn.Module,
         num_classes: int,
         freeze_backbone: bool = True,
-        head_type: str = "linear",
-        head_batch_norm: bool = True,
-        head_hidden_channels: int = 256,
-        head_dropout: float = 0.1,
-        unfreeze_last_blocks: int = 0,
         class_names: Sequence[str] | None = None,
     ) -> None:
         super().__init__(
@@ -114,7 +81,6 @@ class DINOv3Segmenter(SemanticSegmenter):
             raise ValueError("num_classes must match the length of class_names")
         self.backbone = backbone
         self.freeze_backbone = freeze_backbone
-        self.unfreeze_last_blocks = unfreeze_last_blocks
 
         config = backbone.config
         self.backbone_type = config.model_type
@@ -130,31 +96,13 @@ class DINOv3Segmenter(SemanticSegmenter):
                 f"got {self.backbone_type!r}"
             )
 
-        self.classifier = make_segmentation_head(
-            self.in_channels,
-            self.num_classes,
-            head_type=head_type,
-            batch_norm=head_batch_norm,
-            hidden_channels=head_hidden_channels,
-            dropout=head_dropout,
+        self.classifier = nn.Sequential(
+            nn.BatchNorm2d(self.in_channels),
+            nn.Conv2d(self.in_channels, self.num_classes, kernel_size=1),
         )
         if freeze_backbone:
             self.backbone.requires_grad_(False)
-            if unfreeze_last_blocks:
-                self._unfreeze_last_blocks(unfreeze_last_blocks)
             self.backbone.eval()
-
-    def _unfreeze_last_blocks(self, count: int) -> None:
-        layers = getattr(self.backbone, "layer", None)
-        if layers is None:
-            raise ValueError("this DINOv3 backbone does not expose transformer blocks")
-        if not 0 < count <= len(layers):
-            raise ValueError(f"unfreeze_last_blocks must be between 0 and {len(layers)}")
-        for layer in layers[-count:]:
-            layer.requires_grad_(True)
-        norm = getattr(self.backbone, "norm", None)
-        if norm is not None:
-            norm.requires_grad_(True)
 
     def distillation_feature_tap(self) -> FeatureTap:
         return FeatureTap(self.classifier, self.in_channels, use_input=True)

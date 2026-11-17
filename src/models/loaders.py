@@ -118,12 +118,6 @@ def load_segformer(
 def _build_dinov3(
     model_id: str,
     class_names: Sequence[str],
-    freeze_backbone: bool = True,
-    head_type: str = "linear",
-    head_batch_norm: bool = True,
-    head_hidden_channels: int = 256,
-    head_dropout: float = 0.1,
-    unfreeze_last_blocks: int = 0,
 ) -> DINOv3Segmenter:
     from transformers import AutoModel
 
@@ -131,12 +125,6 @@ def _build_dinov3(
     return DINOv3Segmenter(
         backbone=backbone,
         num_classes=len(class_names),
-        freeze_backbone=freeze_backbone,
-        head_type=head_type,
-        head_batch_norm=head_batch_norm,
-        head_hidden_channels=head_hidden_channels,
-        head_dropout=head_dropout,
-        unfreeze_last_blocks=unfreeze_last_blocks,
         class_names=class_names,
     )
 
@@ -234,9 +222,6 @@ def load_model(
         return _build_dinov3(
             model_id or DEFAULT_MODEL_IDS[model_name],
             names,
-            freeze_backbone=True,
-            head_type="linear",
-            head_batch_norm=True,
         )
     if model_name == "dinov3_vitl16_mask2former":
         return _build_dinov3_mask2former(
