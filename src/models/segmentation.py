@@ -64,7 +64,7 @@ class SemanticSegmenter(nn.Module):
         )
 
 
-def make_segmentation_head(  # noqa: PLR0913
+def make_segmentation_head(
     in_channels: int,
     num_classes: int,
     head_type: str = "linear",
@@ -93,6 +93,8 @@ def make_segmentation_head(  # noqa: PLR0913
 
 
 class DINOv3Segmenter(SemanticSegmenter):
+    """Linear or lightweight semantic-segmentation head over dense DINOv3 features."""
+
     def __init__(
         self,
         backbone: nn.Module,
@@ -221,6 +223,8 @@ class DINOv3Segmenter(SemanticSegmenter):
 
 
 class SegFormerSegmenter(SemanticSegmenter):
+    """Full-resolution wrapper around the official SegFormer model."""
+
     def __init__(self, model: nn.Module, class_names: Sequence[str]) -> None:
         super().__init__(class_names)
         self.model = model
