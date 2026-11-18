@@ -172,6 +172,8 @@ class TrainingConfig:
 
 @dataclass(frozen=True)
 class MetricsConfig:
+    """Optional boundary diagnostics in addition to standard segmentation metrics."""
+
     trimap_kernel_size: int | None = None
 
     def __post_init__(self) -> None:
@@ -183,6 +185,8 @@ class MetricsConfig:
 
 @dataclass(frozen=True)
 class TeacherConfig:
+    """A supervised canonical teacher definition and its trained checkpoint."""
+
     config_path: str
     checkpoint_path: str
 
@@ -195,6 +199,8 @@ class TeacherConfig:
 
 @dataclass(frozen=True)
 class DistillationConfig:
+    """Validated settings shared by vanilla KD, BPKD and SARD experiments."""
+
     method: Literal["vanilla", "bpkd", "sard"]
     teacher: TeacherConfig
     spatial_stride: int = 8
@@ -392,6 +398,7 @@ def load_config(path: str | Path) -> BaselineConfig:
 
 
 def resolved_config(config: BaselineConfig) -> dict[str, Any]:
+    """Return a YAML/JSON-safe representation of a validated configuration."""
     return asdict(config)
 
 
