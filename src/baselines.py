@@ -43,6 +43,7 @@ def build_baseline(
     mask_variant: MaskVariant | None = None,
     include_distillation: bool = True,
 ) -> BaselineComponents:
+    """Build the common model, data, loss, and Lightning module for one baseline."""
     selected_mask_variant = (
         config.data.mask_variant if mask_variant is None else mask_variant
     )
@@ -208,6 +209,7 @@ def _teacher_model_state(checkpoint_path: Path) -> dict[str, torch.Tensor]:
 
 
 def load_distillation_teacher(config: BaselineConfig) -> SemanticSegmenter:
+    """Restore a supervised canonical teacher and validate its data provenance."""
     if config.distillation is None:
         raise ValueError("a distillation configuration is required to load a teacher")
     teacher_reference = config.distillation.teacher
