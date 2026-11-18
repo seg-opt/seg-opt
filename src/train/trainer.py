@@ -34,6 +34,7 @@ def cosine_with_warmup_multiplier(
     total_steps: int,
     warmup_steps: int,
 ) -> float:
+    """Learning-rate multiplier for linear warmup followed by cosine decay."""
     step = min(step, total_steps - 1)
     if warmup_steps and step < warmup_steps:
         return (step + 1) / warmup_steps
@@ -61,6 +62,8 @@ def parameter_groups(
     head_learning_rate: float,
     backbone_learning_rate: float | None,
 ) -> list[dict[str, Any]]:
+    """Split trainable model parameters into disjoint head/backbone groups."""
+
     trainable = _unique_trainable(model.parameters())
     if not trainable:
         raise ValueError("model has no trainable parameters")
@@ -99,6 +102,8 @@ def parameter_groups(
 
 
 class BaselineModule(L.LightningModule):
+    """Supervised Lightning module shared by all segmentation baselines."""
+
     def __init__(
         self,
         model: nn.Module,
@@ -234,6 +239,7 @@ class BaselineModule(L.LightningModule):
             )
 
     def latest_metrics(self, stage: str) -> dict[str, Any]:
+        """Return a copy of the latest JSON-safe epoch metrics."""
         if stage not in self._latest_metrics:
             raise RuntimeError(f"no completed {stage!r} epoch is available")
         metrics = self._latest_metrics[stage]
@@ -303,6 +309,8 @@ class BaselineModule(L.LightningModule):
 
 
 class DistillationModule(BaselineModule):
+    """Canonical baseline trainer with a frozen teacher used only for training."""
+
     def __init__(
         self,
         model: nn.Module,
@@ -434,6 +442,7 @@ class DistillationModule(BaselineModule):
         return task_loss, scores, result
 
     def _optimizer_groups(self) -> list[dict[str, Any]]:
+        """Also optimize trainable distillation heads, such as SARD projections."""
         groups = super()._optimizer_groups()
         auxiliary = _unique_trainable(self.distillation_loss.parameters())
         if auxiliary:
