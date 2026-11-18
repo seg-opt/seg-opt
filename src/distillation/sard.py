@@ -46,6 +46,7 @@ class _CapturedFeatures:
 
 @contextmanager
 def capture_features(model: nn.Module) -> Iterator[_CapturedFeatures]:
+    """Record the model's distillation feature map during forwards in scope."""
     tap_getter = getattr(model, "distillation_feature_tap", None)
     if not callable(tap_getter):
         raise TypeError("model must implement distillation_feature_tap for SARD")
@@ -174,6 +175,8 @@ def _standardized(features: torch.Tensor) -> torch.Tensor:
 
 
 class SARDLoss(nn.Module):
+    """Structure-weighted feature consistency plus distribution alignment."""
+
     requires_features = True
 
     def __init__(

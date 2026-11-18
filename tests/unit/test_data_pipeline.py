@@ -19,6 +19,8 @@ from src.data.dataset import (
 
 
 class RecordingProcessor:
+    """Minimal processor double, avoiding a transformers dependency in data tests."""
+
     def __init__(self):
         self.batch_sizes = []
 

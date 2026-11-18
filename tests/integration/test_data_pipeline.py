@@ -7,7 +7,7 @@ from src.utils.utils import load_config
 
 
 def test_configured_real_dataset_and_print_entries():
-    """Validate the real dataset."""
+    """Validate real dataset counts, split manifest, decoded shapes, and classes."""
     config = load_config("experiments/baselines_benchmark/resnet34_unet.yaml").data
     root = Path(config.dataset_root)
 
