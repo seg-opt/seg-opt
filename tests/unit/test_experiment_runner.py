@@ -335,12 +335,11 @@ class ExperimentRunnerTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 experiment.validate_gate(baseline, teacher)
 
-    def test_status_uses_scheduler_and_retry_rejects_live_stages(self):
+    def test_status_reads_latest_attempt_and_scheduler_states(self):
         run = self.submit("submit", "experiments/student.yaml")
         self.complete_stage(run, "student-smoke")
         first = run / "stages/student-smoke/attempt-0001"
         first.rename(first.with_name("attempt-0002"))
-        experiment.atomic_json(first / "state.json", {"state": "failed"})
         self.states = {"101": ("COMPLETED", "0:0"), "102": ("RUNNING", "0:0"),
                        "103": ("PENDING", "0:0")}
         status = experiment.status(run)

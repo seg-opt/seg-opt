@@ -81,13 +81,11 @@ This is a five-variant single-seed pilot. Do not select
 settings using test metrics or treat the SegFormer-B4 runs (batch 8,
 accumulation 2) as controlled CNN loss comparisons. Future 80-epoch full
 runs need matched supervised controls and a validation-based protocol. The
-canonical YAMLs now use 80 epochs; the historical 20-epoch protocol remains
-in the immutable run snapshots and resolved artifact configs. Changing these
-defaults does not submit new runs or change the completed pilot below.
+YAMLs now use 80 epochs; the historical 20-epoch protocol remains
+in the immutable run snapshots and resolved artifact configs.
 
 ## Completed CNN Pilot Results
 
-All five historical full-training jobs and summaries completed successfully.
 The seven student artifact sets and ResNet34 teacher passed checkpoint,
 config, split-hash, and validation-selection verification. Data metadata and
 training settings match after excluding only intended output-directory

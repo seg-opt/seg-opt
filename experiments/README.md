@@ -89,7 +89,7 @@ Successful submission prints a workflow directory. Its `manifest.json`
 records stages, paths, source/image hashes and profile; scheduler IDs live in
 per-attempt `job.json` records. Source snapshots exclude results, hidden files,
 caches, virtual environments and credentials. Artifacts use unique
-workflow/stage/attempt paths rather than overwriting canonical config outputs.
+workflow/stage/attempt paths rather than overwriting configured output directories.
 Scientific artifacts retain schema version 2. Do not edit managed snapshots.
 Managed jobs clear inherited host `PYTHONPATH`/`PYTHONHOME` and pin both
 Singularity/Apptainer Python paths to `/workspace`, the verified source snapshot.
