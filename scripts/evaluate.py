@@ -157,13 +157,8 @@ def evaluate_checkpoint(
     mask_variant: MaskVariant | None = None,
     trainer: L.Trainer | None = None,
 ) -> dict[str, Any]:
-    """Restore one checkpoint, run validation/test, and write metrics.json."""
     checkpoint_path = Path(checkpoint_path).resolve()
     output_dir = Path(output_dir)
-    if not checkpoint_path.is_file():
-        raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
-    if run_kind not in {"full", "smoke"}:
-        raise ValueError("run_kind must be 'full' or 'smoke'")
     selected_mask_variant = (
         config.data.mask_variant if mask_variant is None else mask_variant
     )

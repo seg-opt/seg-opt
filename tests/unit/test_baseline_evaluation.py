@@ -26,9 +26,6 @@ from src.train.trainer import BaselineModule, LusnarExamplesCallback, create_tra
 from src.utils.utils import TeacherConfig, load_config, write_resolved_config
 
 
-CLASS_NAMES = ("background", "sky", "small_rock", "large_rock")
-
-
 class TinyBaseline(nn.Module):
     def __init__(self, num_classes=4) -> None:
         super().__init__()
