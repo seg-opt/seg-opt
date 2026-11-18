@@ -157,6 +157,7 @@ def evaluate_checkpoint(
     mask_variant: MaskVariant | None = None,
     trainer: L.Trainer | None = None,
 ) -> dict[str, Any]:
+    """Restore one checkpoint, run validation/test, and write metrics.json."""
     checkpoint_path = Path(checkpoint_path).resolve()
     output_dir = Path(output_dir)
     selected_mask_variant = (
