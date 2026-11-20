@@ -15,6 +15,8 @@ class ConvBNReLU(nn.Sequential):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int | None = None,
+        groups: int = 1,
+        dilation: int = 1,
     ) -> None:
         if padding is None:
             padding = kernel_size // 2
@@ -25,6 +27,8 @@ class ConvBNReLU(nn.Sequential):
                 kernel_size,
                 stride=stride,
                 padding=padding,
+                groups=groups,
+                dilation=dilation,
                 bias=False,
             ),
             nn.BatchNorm2d(out_channels),
@@ -40,24 +44,10 @@ class DepthwiseSeparableConv(nn.Module):
         stride: int = 1,
     ) -> None:
         super().__init__()
-        self.depthwise = nn.Sequential(
-            nn.Conv2d(
-                in_channels,
-                in_channels,
-                kernel_size=3,
-                stride=stride,
-                padding=1,
-                groups=in_channels,
-                bias=False,
-            ),
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(inplace=True),
+        self.depthwise = ConvBNReLU(
+            in_channels, in_channels, stride=stride, groups=in_channels
         )
-        self.pointwise = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-        )
+        self.pointwise = ConvBNReLU(in_channels, out_channels, kernel_size=1)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.pointwise(self.depthwise(inputs))
@@ -75,20 +65,11 @@ class LinearBottleneck(nn.Module):
         hidden_channels = in_channels * expansion
         self.use_residual = stride == 1 and in_channels == out_channels
         self.block = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(hidden_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(
-                hidden_channels,
-                hidden_channels,
-                kernel_size=3,
-                stride=stride,
-                padding=1,
-                groups=hidden_channels,
-                bias=False,
+            # Unpack to preserve the flat block state_dict keys.
+            *ConvBNReLU(in_channels, hidden_channels, kernel_size=1),
+            *ConvBNReLU(
+                hidden_channels, hidden_channels, stride=stride, groups=hidden_channels
             ),
-            nn.BatchNorm2d(hidden_channels),
-            nn.ReLU(inplace=True),
             nn.Conv2d(hidden_channels, out_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels),
         )
@@ -172,19 +153,7 @@ class GlobalFeatureExtractor(nn.Sequential):
 class FeatureFusion(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.context_depthwise = nn.Sequential(
-            nn.Conv2d(
-                128,
-                128,
-                kernel_size=3,
-                padding=4,
-                dilation=4,
-                groups=128,
-                bias=False,
-            ),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-        )
+        self.context_depthwise = ConvBNReLU(128, 128, padding=4, dilation=4, groups=128)
         self.context_projection = nn.Sequential(
             nn.Conv2d(128, 128, kernel_size=1, bias=False),
             nn.BatchNorm2d(128),

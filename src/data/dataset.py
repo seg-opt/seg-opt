@@ -187,21 +187,9 @@ class SplitManifest:
 def _validate_manifest_against_dataset(
     manifest: SplitManifest,
     dataset_root: Path,
+    paired_ids: set[str],
 ) -> None:
-    pairs = find_pairs(
-        dataset_root / "images" / "render",
-        dataset_root / "images" / "ground",
-    )
-    paired_ids = {_frame_id(image_path) for image_path, _ in pairs}
     manifest_ids = set(manifest.all_ids)
-
-    missing = sorted(manifest_ids - paired_ids)
-    if missing:
-        raise ValueError(
-            f"split manifest references {len(missing)} frame IDs missing from the dataset: "
-            f"{missing[:5]}"
-        )
-
     excluded = load_excluded_ids(dataset_root / name for name in manifest.excluded_id_files)
     wrongly_included = sorted(manifest_ids & excluded)
     if wrongly_included:
@@ -248,19 +236,30 @@ def _benchmark_pair(dataset: DatasetName, dataset_root: Path, sample_id: str) ->
 
 
 def _validate_benchmark_manifest(manifest: SplitManifest, dataset_root: Path) -> None:
-    missing = [
-        sample_id
-        for sample_id in manifest.all_ids
-        if not all(
-            path.is_file()
-            for path in _benchmark_pair(manifest.dataset, dataset_root, sample_id)
+    if manifest.dataset == "lunar":
+        pairs = find_pairs(
+            dataset_root / "images" / "render",
+            dataset_root / "images" / "ground",
         )
-    ]
+        paired_ids = {_frame_id(image_path) for image_path, _ in pairs}
+    else:
+        paired_ids = {
+            sample_id
+            for sample_id in manifest.all_ids
+            if all(
+                path.is_file()
+                for path in _benchmark_pair(manifest.dataset, dataset_root, sample_id)
+            )
+        }
+    missing = sorted(set(manifest.all_ids) - paired_ids)
     if missing:
+        kind = "frame IDs" if manifest.dataset == "lunar" else "samples"
         raise ValueError(
-            f"split manifest references {len(missing)} samples missing from the dataset: "
+            f"split manifest references {len(missing)} {kind} missing from the dataset: "
             f"{missing[:5]}"
         )
+    if manifest.dataset == "lunar":
+        _validate_manifest_against_dataset(manifest, dataset_root, paired_ids)
 
 
 def _validate_lusnar_manifest(manifest: SplitManifest, dataset_root: Path) -> None:
@@ -350,9 +349,7 @@ def load_split_manifest(
             f"!= {manifest.counts!r}"
         )
     if dataset_root is not None:
-        if dataset == "lunar":
-            _validate_manifest_against_dataset(manifest, Path(dataset_root))
-        elif dataset == "lusnar":
+        if dataset == "lusnar":
             _validate_lusnar_manifest(manifest, Path(dataset_root))
         else:
             _validate_benchmark_manifest(manifest, Path(dataset_root))
@@ -521,12 +518,15 @@ def load_datasets(
     if dataset == "lusnar" and mask_variant != "ground":
         raise ValueError("LUSNAR only supports mask_variant='ground'")
     dataset_root = Path(dataset_root)
-    manifest_dataset = load_split_manifest(split_manifest).dataset
-    if manifest_dataset != dataset:
+    manifest = load_split_manifest(split_manifest)
+    if manifest.dataset != dataset:
         raise ValueError(
-            f"split manifest is for {manifest_dataset!r}, but the config uses {dataset!r}"
+            f"split manifest is for {manifest.dataset!r}, but the config uses {dataset!r}"
         )
-    manifest = load_split_manifest(split_manifest, dataset_root=dataset_root)
+    if dataset == "lusnar":
+        _validate_lusnar_manifest(manifest, dataset_root)
+    else:
+        _validate_benchmark_manifest(manifest, dataset_root)
     if dataset == "lunar":
         pairs = find_pairs(
             dataset_root / "images" / "render",

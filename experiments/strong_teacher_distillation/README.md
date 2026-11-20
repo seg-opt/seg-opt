@@ -16,24 +16,21 @@ students and the teacher now use the standard 80-epoch full-run budget:
 Mask2Former dense evidence is normalized into a categorical distribution and
 converted to log-potentials before KD. No feature distillation is enabled. The
 task-only controls can be reused only when their verified artifacts match the
-80-epoch budget and remaining protocol. Do not compare new runs against
-unmatched historical controls, even when their epoch budgets match.
+80-epoch budget and remaining protocol.
 
 The legacy `submit.sh` schedules student smoke/full arrays only; it does not
 train a teacher. Before submitting students, train from the current 80-epoch
 teacher config or adopt a teacher only after full protocol/artifact verification.
 Its standalone checkpoint reference is
 `results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt`,
-not the historical `lunar_teacher_80e` artifact. Matching the 80-epoch budget
-alone does not authorize reusing that historical checkpoint. Its full protocol
+not the historical `lunar_teacher_80e` artifact. Its full protocol
 and artifacts are currently not readable by our HPC user; do not adopt, copy,
 or relabel it as a verified current teacher until that verification is possible.
 
-Prefer the shared artifact-verifying runner: submit the teacher config, then
-use `pipeline` with each student config and matched completed baseline and
-teacher artifacts. The runner rewrites teacher references to those verified
-artifacts and applies the validation gate. Do not submit a duplicate teacher
-if a suitable fully verified 80-epoch run already exists.
+Prefer [`pipeline`](../README.md) with each student config and matched completed
+baseline and teacher artifacts. The runner rewrites teacher references to those
+verified artifacts and applies the validation gate. Do not submit a duplicate
+teacher if a fully verified 80-epoch run already exists.
 
 Only after the standalone teacher reference is prepared, the legacy student
 smoke-gated sequence is available with:

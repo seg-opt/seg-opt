@@ -93,7 +93,7 @@ def make_segmentation_head(
 
 
 class DINOv3Segmenter(SemanticSegmenter):
-    """Linear semantic-segmentation head over dense DINOv3 features."""
+    """Linear or lightweight semantic-segmentation head over dense DINOv3 features."""
 
     def __init__(
         self,
@@ -125,10 +125,7 @@ class DINOv3Segmenter(SemanticSegmenter):
         elif self.backbone_type == "dinov3_convnext":
             self.in_channels = config.hidden_sizes[-1]
         else:
-            raise ValueError(
-                "DINOv3Segmenter requires a DINOv3 ViT or ConvNeXt backbone, "
-                f"got {self.backbone_type!r}"
-            )
+            raise ValueError(f"unsupported DINOv3 backbone {self.backbone_type!r}")
 
         self.classifier = make_segmentation_head(
             self.in_channels,
@@ -187,8 +184,7 @@ class DINOv3Segmenter(SemanticSegmenter):
         expected_tokens = grid_height * grid_width
         if patch_tokens.shape[1] != expected_tokens:
             raise ValueError(
-                "DINOv3 patch-token count does not match the input dimensions: "
-                f"expected {expected_tokens}, got {patch_tokens.shape[1]}"
+                f"expected {expected_tokens} patch tokens, got {patch_tokens.shape[1]}"
             )
         return patch_tokens.transpose(1, 2).reshape(
             pixel_values.shape[0],
@@ -291,13 +287,8 @@ class Mask2FormerSegmenter(SemanticSegmenter):
         for sample_index, label in enumerate(labels):
             present = torch.unique(label[label != self.ignore_index])
             if not present.numel():
-                raise ValueError(
-                    "Mask2Former cannot train on an all-ignore target "
-                    f"(sample {sample_index})"
-                )
-            if present.numel() and (
-                present.min() < 0 or present.max() >= self.num_classes
-            ):
+                raise ValueError(f"all-ignore target at sample {sample_index}")
+            if present.min() < 0 or present.max() >= self.num_classes:
                 raise ValueError("labels contain a class outside the configured range")
             present = present.to(dtype=torch.long)
             masks = torch.stack(
@@ -313,10 +304,6 @@ class Mask2FormerSegmenter(SemanticSegmenter):
         masks_queries_logits: torch.Tensor,
         output_size: tuple[int, int],
     ) -> torch.Tensor:
-        if class_queries_logits.ndim != 3 or masks_queries_logits.ndim != 4:
-            raise ValueError("Mask2Former query outputs have invalid dimensions")
-        if class_queries_logits.shape[:2] != masks_queries_logits.shape[:2]:
-            raise ValueError("class and mask query counts do not match")
         if class_queries_logits.shape[-1] != self.num_classes + 1:
             raise ValueError("class queries must include one no-object class")
 

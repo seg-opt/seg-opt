@@ -70,8 +70,6 @@ def build_baseline(
         dataset=config.data.dataset,
     )
     manifest = train_dataset.split_manifest
-    if manifest is None:
-        raise RuntimeError("canonical datasets must retain their split manifest")
 
     loaders = make_dataloaders(
         train_dataset,

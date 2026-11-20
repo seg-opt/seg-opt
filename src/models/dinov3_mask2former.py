@@ -116,8 +116,7 @@ class DINOv3PyramidBackbone(nn.Module):
         expected = grid_size[0] * grid_size[1]
         if tokens.shape[1] != expected:
             raise ValueError(
-                "DINOv3 patch-token count does not match the input dimensions: "
-                f"expected {expected}, got {tokens.shape[1]}"
+                f"expected {expected} patch tokens, got {tokens.shape[1]}"
             )
         tokens = norm(tokens)
         return tokens.transpose(1, 2).reshape(
@@ -168,17 +167,6 @@ class DINOv3PyramidBackbone(nn.Module):
 
 class DINOv3Mask2FormerSegmenter(Mask2FormerSegmenter):
     """Mask2Former semantic model backed by a frozen DINOv3 feature pyramid."""
-
-    def __init__(
-        self,
-        model: nn.Module,
-        class_names: Sequence[str],
-        ignore_index: int = 255,
-    ) -> None:
-        super().__init__(model, class_names, ignore_index)
-        encoder = self.model.model.pixel_level_module.encoder
-        if not isinstance(encoder, DINOv3PyramidBackbone):
-            raise TypeError("Mask2Former encoder must be DINOv3PyramidBackbone")
 
     @property
     def pyramid_backbone(self) -> DINOv3PyramidBackbone:

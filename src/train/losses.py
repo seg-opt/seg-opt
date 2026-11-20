@@ -60,16 +60,6 @@ class SegmentationLoss(nn.Module):
         logits: torch.Tensor,
         targets: torch.Tensor,
     ) -> torch.Tensor:
-        if logits.ndim != 4 or targets.ndim != 3:
-            raise ValueError("expected logits [B, C, H, W] and targets [B, H, W]")
-        if (
-            logits.shape[0] != targets.shape[0]
-            or logits.shape[-2:] != targets.shape[-2:]
-        ):
-            raise ValueError("logits and targets must have matching batch and spatial shapes")
-        if logits.shape[1] != self.class_weights.numel():
-            raise ValueError("logit channels must match the configured class count")
-
         valid = targets != self.ignore_index
         differentiable_zero = logits.sum() * 0
         if not valid.any():

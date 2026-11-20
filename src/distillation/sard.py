@@ -37,7 +37,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from src.distillation.bpkd import DistillationLossResult, valid_mask_at_size
+from src.distillation.bpkd import DistillationLossResult, _distillation_size, valid_mask_at_size
 
 
 class _CapturedFeatures:
@@ -99,8 +99,6 @@ def structure_cues(
     density_radius: int = 7,
 ) -> StructureCues:
     """Return the raw ``E``, ``C`` and ``D`` maps, each shaped ``[B, H, W]``."""
-    if teacher_features.ndim != 4:
-        raise ValueError("teacher_features must have shape [B, C, H, W]")
     if density_radius < 0:
         raise ValueError("density_radius must be non-negative")
     features = teacher_features.detach().float()
@@ -148,9 +146,7 @@ def structure_weights(
     density_weight: float = 1.0,
     density_radius: int = 7,
 ) -> torch.Tensor:
-    """Return ``W``: non-negative ``[B, H, W]`` weights summing to one per image.
-
-    Ignored locations receive zero weight.  With every beta at zero the map is
+    """Ignored locations receive zero weight.  With every beta at zero the map is
     uniform over valid locations, which is the paper's ``W(i) = 1`` ablation.
     """
     if valid.ndim != 3:
@@ -254,16 +250,9 @@ class SARDLoss(nn.Module):
         teacher_features: torch.Tensor,
         labels: torch.Tensor,
     ) -> DistillationLossResult:
-        if student_features.ndim != 4 or teacher_features.ndim != 4:
-            raise ValueError("SARD features must have shape [B, C, H, W]")
-        if labels.ndim != 3:
-            raise ValueError("labels must have shape [B, H, W]")
         if not student_features.shape[0] == teacher_features.shape[0] == labels.shape[0]:
             raise ValueError("features and labels must have matching batch size")
-        size = (
-            (labels.shape[-2] + self.spatial_stride - 1) // self.spatial_stride,
-            (labels.shape[-1] + self.spatial_stride - 1) // self.spatial_stride,
-        )
+        size = _distillation_size(labels, self.spatial_stride)
         with torch.autocast(device_type=labels.device.type, enabled=False):
             student = self._grid(student_features, size)
             teacher = self._grid(teacher_features.detach(), size)

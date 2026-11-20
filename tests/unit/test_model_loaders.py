@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from src.models import DINOv3Segmenter
+from src.models.loaders import load_model
 
 
 class ViTBackbone(nn.Module):
@@ -56,3 +57,17 @@ def test_dinov3_segmenter_keeps_frozen_backbone_in_eval_mode():
     assert not model.backbone.training
     assert not any(parameter.requires_grad for parameter in model.backbone.parameters())
     assert all(parameter.requires_grad for parameter in model.classifier.parameters())
+
+
+@pytest.mark.parametrize(
+    "model_name, message",
+    [("fast_scnn", "no pretrained weights"), ("dinov3", "unsupported DINOv3 backbone")],
+)
+def test_model_loader_errors(model_name, message, monkeypatch):
+    backbone = ViTBackbone()
+    monkeypatch.setattr(backbone.config, "model_type", "unsupported")
+    with pytest.raises(ValueError, match=message):
+        if model_name == "fast_scnn":
+            load_model(model_name, num_classes=4, pretrained=True)
+        else:
+            DINOv3Segmenter(backbone, num_classes=4)

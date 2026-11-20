@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
@@ -54,10 +54,7 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         if self.name not in BASELINE_NAMES:
-            raise ValueError(
-                f"unsupported baseline {self.name!r}; expected one of "
-                f"{sorted(BASELINE_NAMES)}"
-            )
+            raise ValueError(f"unsupported baseline {self.name!r}")
         if self.name == "fast_scnn" and self.pretrained:
             raise ValueError("Fast-SCNN has no pretrained weights")
         if (
@@ -328,40 +325,13 @@ def _load_distillation_config(value: Any) -> DistillationConfig | None:
         return None
     raw = _mapping(value, "distillation")
     _reject_unknown_fields(
-        raw,
-        {
-            "method",
-            "teacher",
-            "spatial_stride",
-            "vanilla_weight",
-            "vanilla_temperature",
-            "body_weight",
-            "edge_weight",
-            "edge_alpha",
-            "edge_kernel_size",
-            "body_temperature",
-            "edge_temperature",
-            "prm",
-            "pom",
-            "sard_feature_weight",
-            "sard_distribution_weight",
-            "sard_edge_weight",
-            "sard_corner_weight",
-            "sard_density_weight",
-            "sard_density_radius",
-            "sard_noise_alpha",
-            "sard_projection_channels",
-            "sard_denoiser_hidden_channels",
-        },
-        "distillation",
+        raw, {f.name for f in fields(DistillationConfig)}, "distillation"
     )
     if "method" not in raw or "teacher" not in raw:
         raise ValueError("distillation requires method and teacher sections")
     teacher_raw = _mapping(raw.pop("teacher"), "distillation.teacher")
     _reject_unknown_fields(
-        teacher_raw,
-        {"config_path", "checkpoint_path"},
-        "distillation.teacher",
+        teacher_raw, {f.name for f in fields(TeacherConfig)}, "distillation.teacher"
     )
     for key in ("config_path", "checkpoint_path"):
         if key not in teacher_raw:
@@ -378,9 +348,7 @@ def _load_distillation_config(value: Any) -> DistillationConfig | None:
 def load_config(path: str | Path) -> BaselineConfig:
     raw = load_yaml(path)
     _reject_unknown_fields(
-        raw,
-        {"model", "data", "training", "loss", "metrics", "distillation"},
-        "configuration",
+        raw, {f.name for f in fields(BaselineConfig)}, "configuration"
     )
     for required in ("model", "data", "training"):
         if required not in raw:
@@ -388,31 +356,11 @@ def load_config(path: str | Path) -> BaselineConfig:
 
     model_raw = _mapping(raw["model"], "model")
     _reject_unknown_fields(
-        model_raw,
-        {
-            "name",
-            "model_id",
-            "decoder_model_id",
-            "pretrained",
-            "freeze_backbone",
-        },
-        "model",
+        model_raw, {f.name for f in fields(ModelConfig)}, "model"
     )
     data_raw = _mapping(raw["data"], "data")
     _reject_unknown_fields(
-        data_raw,
-        {
-            "dataset_root",
-            "split_manifest",
-            "class_names",
-            "image_height",
-            "image_width",
-            "num_workers",
-            "mask_variant",
-            "augmentation",
-            "dataset",
-        },
-        "data",
+        data_raw, {f.name for f in fields(DataConfig)}, "data"
     )
     for key in ("dataset_root", "split_manifest"):
         if key not in data_raw:
@@ -420,39 +368,21 @@ def load_config(path: str | Path) -> BaselineConfig:
         data_raw[key] = _project_path(data_raw[key])
     augmentation_raw = _mapping(data_raw.pop("augmentation", {}), "data.augmentation")
     _reject_unknown_fields(
-        augmentation_raw,
-        {"flip_probability", "brightness", "contrast", "gamma_min", "gamma_max"},
-        "data.augmentation",
+        augmentation_raw, {f.name for f in fields(AugmentationConfig)}, "data.augmentation"
     )
     data_raw["augmentation"] = AugmentationConfig(**augmentation_raw)
     if "class_names" in data_raw:
         data_raw["class_names"] = tuple(data_raw["class_names"])
     training_raw = _mapping(raw["training"], "training")
     _reject_unknown_fields(
-        training_raw,
-        {
-            "output_dir",
-            "batch_size",
-            "accumulate_grad_batches",
-            "learning_rate",
-            "backbone_learning_rate",
-            "epochs",
-            "weight_decay",
-            "warmup_fraction",
-            "precision",
-            "logging_steps",
-            "seed",
-        },
-        "training",
+        training_raw, {f.name for f in fields(TrainingConfig)}, "training"
     )
     if "output_dir" not in training_raw:
         raise ValueError("training section is missing required 'output_dir'")
     training_raw["output_dir"] = _project_path(training_raw["output_dir"])
     loss_raw = _mapping(raw.get("loss", {}), "loss")
     _reject_unknown_fields(
-        loss_raw,
-        {"cross_entropy_weight", "dice_weight", "ignore_index"},
-        "loss",
+        loss_raw, {f.name for f in fields(LossConfig)}, "loss"
     )
     metrics_raw = _mapping(raw.get("metrics", {}), "metrics")
     _reject_unknown_fields(metrics_raw, {"trimap_kernel_size"}, "metrics")

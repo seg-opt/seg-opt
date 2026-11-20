@@ -147,41 +147,12 @@ class BaselineModule(L.LightningModule):
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         return self.model(images)
 
-    def _validate_scores(
-        self,
-        scores: torch.Tensor,
-        labels: torch.Tensor,
-    ) -> None:
-        expected = (
-            labels.shape[0],
-            len(self.metrics.class_names),
-            *labels.shape[-2:],
-        )
-        if tuple(scores.shape) != expected:
-            raise ValueError(
-                "model scores must have shape [B, classes, H, W]; "
-                f"expected {expected}, got {tuple(scores.shape)}"
-            )
-
     def _loss_and_scores(
         self,
         images: torch.Tensor,
         labels: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        loss_and_scores = getattr(self.model, "loss_and_scores", None)
-        if not callable(loss_and_scores):
-            raise TypeError("baseline model must implement loss_and_scores")
-
-        result = loss_and_scores(images, labels, self.criterion)
-        if not isinstance(result, tuple) or len(result) != 2:
-            raise TypeError("loss_and_scores must return (loss, scores)")
-        loss, scores = result
-        if not isinstance(loss, torch.Tensor) or loss.ndim != 0:
-            raise TypeError("loss_and_scores must return a scalar tensor loss")
-        if not isinstance(scores, torch.Tensor):
-            raise TypeError("loss_and_scores must return tensor scores")
-        self._validate_scores(scores, labels)
-        return loss, scores
+        return self.model.loss_and_scores(images, labels, self.criterion)
 
     def _log_loss(
         self,
@@ -249,9 +220,6 @@ class BaselineModule(L.LightningModule):
     ) -> torch.Tensor:
         return self._evaluation_step(batch, "test")
 
-    def _reset_metrics(self, stage: str) -> None:
-        self.metrics.reset(stage)
-
     def _log_metrics(self, stage: str) -> None:
         scalar_metrics, confusion = self.metrics.snapshot(stage)
         self._latest_metrics[stage] = {
@@ -281,19 +249,19 @@ class BaselineModule(L.LightningModule):
         }
 
     def on_train_epoch_start(self) -> None:
-        self._reset_metrics("train")
+        self.metrics.reset("train")
 
     def on_train_epoch_end(self) -> None:
         self._log_metrics("train")
 
     def on_validation_epoch_start(self) -> None:
-        self._reset_metrics("val")
+        self.metrics.reset("val")
 
     def on_validation_epoch_end(self) -> None:
         self._log_metrics("val")
 
     def on_test_epoch_start(self) -> None:
-        self._reset_metrics("test")
+        self.metrics.reset("test")
 
     def on_test_epoch_end(self) -> None:
         self._log_metrics("test")
@@ -383,8 +351,6 @@ class DistillationModule(BaselineModule):
     def _distillation_logits(model: nn.Module, scores: torch.Tensor) -> torch.Tensor:
         converter = getattr(model, "to_distillation_logits", None)
         logits = converter(scores) if callable(converter) else scores
-        if not isinstance(logits, torch.Tensor):
-            raise TypeError("to_distillation_logits must return a tensor")
         return logits
 
     def train(self, mode: bool = True) -> "DistillationModule":
@@ -435,11 +401,6 @@ class DistillationModule(BaselineModule):
                 self._distillation_logits(self.teacher, teacher_scores),
                 labels,
             )
-        if not isinstance(result, DistillationLossResult):
-            raise TypeError("distillation_loss must return DistillationLossResult")
-        if result.total.ndim != 0:
-            raise TypeError("distillation loss must return a scalar tensor")
-
         loss = task_loss + result.total
         self.metrics.update("train", scores.detach().argmax(dim=1), labels)
         self._log_loss("train", loss, batch_size=images.shape[0], on_step=True)
@@ -606,16 +567,9 @@ def create_trainer(
     enable_wandb: bool = True,
     wandb_run_name: str | None = None,
 ) -> L.Trainer:
-    """Create the canonical trainer.
-
-    ``fast_dev_run`` is a checkpoint-preserving one-batch smoke mode rather
+    """``fast_dev_run`` is a checkpoint-preserving one-batch smoke mode rather
     than Lightning's built-in mode, which disables checkpoint callbacks.
     """
-    if accumulate_grad_batches <= 0:
-        raise ValueError("accumulate_grad_batches must be positive")
-    if max_steps is not None and max_steps <= 0:
-        raise ValueError("max_steps must be positive when specified")
-
     output_dir = Path(output_dir)
     callbacks: list[Callback] = [
         ModelCheckpoint(

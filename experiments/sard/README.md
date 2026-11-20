@@ -68,31 +68,24 @@ needed for this historical pilot.
 | Uniform SARD | sard/fast_scnn_sard_uniform_from_resnet34_unet.yaml |
 | Full SARD | sard/fast_scnn_sard_full_from_resnet34_unet.yaml |
 
-Use the shared artifact-verifying `pipeline` interface for CNN configs,
-not the SegFormer-specific SARD wrapper above. It accepts the selected
-`--config`, completed `--baseline-artifacts`, and `--teacher-artifacts`.
-The validation teacher gate checks matching data/split and real full-run
-checkpoint/config/split hashes before KD. Managed runs retain immutable
-source snapshots and unique attempt outputs; existing artifacts are never
-overwritten. Per-study `study.json`, `comparison.json`, and audited
-`analysis.json` receipts record run IDs, job IDs, artifact locations,
-hashes, and resolved protocols in the chosen study directory.
+CNN configs use `pipeline`, not `experiments/sard/submit.sh` above.
+Gate, hashes, and snapshot outputs: [experiment guide](../README.md).
 
 BPKD weights and SARD settings are transferred starting values from another
 dataset protocol, not tuned ResNet34 optima. SARD uses feature/distribution
 weights 1/0.5, noise alpha 0.5, radius 7, projection width 256, denoiser
 width 128, and stride 8. Full/uniform differ only in structure weights
-(2/1/1 versus 0/0/0). This is a five-variant single-seed pilot. Do not select
+(2/1/1 versus 0/0/0).
+BPKD keeps temperature 1, edge alpha 2, window 7, PRM, and POM.
+This is a five-variant single-seed pilot. Do not select
 settings using test metrics or treat the SegFormer-B4 runs (batch 8,
 accumulation 2) as controlled CNN loss comparisons. Future 80-epoch full
 runs need matched supervised controls and a validation-based protocol. The
-canonical YAMLs now use 80 epochs; the historical 20-epoch protocol remains
-in the immutable run snapshots and resolved artifact configs. Changing these
-defaults does not submit new runs or change the completed pilot below.
+YAMLs now use 80 epochs; the historical 20-epoch protocol remains
+in the immutable run snapshots and resolved artifact configs.
 
 ## Completed CNN Pilot Results
 
-All five historical full-training jobs and summaries completed successfully.
 The seven student artifact sets and ResNet34 teacher passed checkpoint,
 config, split-hash, and validation-selection verification. Data metadata and
 training settings match after excluding only intended output-directory

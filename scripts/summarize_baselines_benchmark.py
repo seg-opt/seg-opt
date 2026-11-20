@@ -34,12 +34,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _metrics_path(results_root: Path, name: str) -> Path:
-    return results_root / name / "seed42" / "metrics.json"
-
-
 def load_metrics(results_root: Path, name: str) -> dict[str, Any]:
-    path = _metrics_path(results_root, name)
+    path = results_root / name / "seed42" / "metrics.json"
     if not path.is_file():
         raise FileNotFoundError(f"missing completed benchmark metrics: {path}")
     with path.open(encoding="utf-8") as file:
@@ -66,11 +62,6 @@ def _trimap_iou(metrics: dict[str, Any], split: str, name: str) -> float:
 
 
 def render_summary(metrics_by_name: dict[str, dict[str, Any]]) -> str:
-    required = {STUDENT, *TEACHER_CANDIDATES}
-    missing = required - metrics_by_name.keys()
-    if missing:
-        raise ValueError(f"missing benchmark metrics for: {', '.join(sorted(missing))}")
-
     student = metrics_by_name[STUDENT]
     teacher_name = max(
         TEACHER_CANDIDATES,
