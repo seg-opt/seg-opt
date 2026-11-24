@@ -23,6 +23,8 @@ REPLICA_SEEDS = {
 def test_training_configs_use_seed42_except_explicit_named_replicas():
     training_paths = set()
     for path in sorted(Path("experiments").rglob("*.yaml")):
+        if path.is_relative_to("experiments/hydra"):
+            continue
         if "training" not in load_yaml(path):
             continue
         training_paths.add(path.as_posix())

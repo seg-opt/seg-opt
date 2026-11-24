@@ -1,0 +1,4 @@
+# @package distillation.teacher
+
+config_path: experiments/baselines_benchmark/segformer_b4.yaml
+checkpoint_path: results/sard/teacher_segformer_b4/checkpoints/best.ckpt

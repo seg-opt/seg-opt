@@ -6,6 +6,7 @@ from io import StringIO
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 from types import ModuleType
@@ -251,6 +252,71 @@ class ExperimentRunnerTests(unittest.TestCase):
         self.assertFalse((run / "artifacts/student/attempt-0001").exists())
         second = self.submit("submit", "experiments/student.yaml")
         self.assertNotEqual(run, second)
+
+    def hydra_overrides(self):
+        actual = Path(experiment.__file__).resolve().parents[1]
+        shutil.copytree(actual / "experiments/hydra", self.root / "experiments/hydra")
+        return ["dataset=lunar", "method=vanilla", "teacher=lunar_segformer_b4"]
+
+    def test_hydra_config_defaults_match_lunar_kd_campaign(self):
+        from src.utils.utils import load_config
+
+        overrides = self.hydra_overrides()
+        actual = Path(experiment.__file__).resolve().parents[1]
+        for student in ("b0", "b1", "b2"):
+            with self.subTest(student=student):
+                run = self.submit("submit-hydra", *overrides, f"student=segformer_{student}")
+                relative = self.manifest(run)["stages"]["train"]["config"]
+                composed = asdict(load_config(run / "source" / relative))
+                historical = asdict(load_config(
+                    actual / f"experiments/logit_distillation/b4_to_{student}_lunar_80e/seed42.yaml"))
+                composed["training"].pop("output_dir")
+                historical["training"].pop("output_dir")
+                self.assertEqual(composed, historical)
+
+    def test_hydra_submit_hashes_config_and_queues_smoke_before_full_training(self):
+        from src.utils.utils import load_config
+
+        overrides = [*self.hydra_overrides(), "student=segformer_b2",
+                     "training.seed=43", "training.learning_rate=0.001"]
+        run = self.submit("submit-hydra", *overrides)
+        manifest = self.manifest(run)
+        stages = manifest["stages"]
+        config_name = stages["train"]["config"]
+        self.assertEqual(stages["train-smoke"]["config"], config_name)
+        config_path = run / "source" / config_name
+        config = load_config(config_path)
+        self.assertEqual(config.training.seed, 43)
+        self.assertEqual(config.training.learning_rate, 0.001)
+        overrides_path = config_path.with_name("overrides.json")
+        self.assertEqual(experiment.read_json(overrides_path), overrides)
+        for path in (config_path, overrides_path):
+            self.assertEqual(manifest["source_hashes"][path.relative_to(run / "source").as_posix()],
+                             hashlib.sha256(path.read_bytes()).hexdigest())
+        self.assertNotEqual(experiment.stage_artifact(manifest, "train-smoke"),
+                            experiment.stage_artifact(manifest, "train"))
+        self.assertEqual(len(self.calls), 3)
+        self.assertIn("--dependency=afterok:101", self.calls[1][0])
+        self.assertIn("--dependency=afterany:101:102", self.calls[2][0])
+        for (command, kwargs), name, mode in zip(self.calls, ("train-smoke", "train"),
+                                                  ("offline", "online")):
+            self.assertEqual(command[-1], f"{name}/attempt-0001")
+            worker_args = experiment.build_parser().parse_args(
+                ["worker", str(run / "manifest.json"), command[-1]])
+            with patch.object(experiment.subprocess, "run") as launch:
+                experiment.worker(worker_args)
+            for env in (kwargs["env"], launch.call_args.kwargs["env"]):
+                for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+                    self.assertEqual(env[prefix + "WANDB_MODE"], mode)
+
+    def test_hydra_submit_rejects_invalid_configs_before_scheduling(self):
+        overrides = self.hydra_overrides()
+        for extra in ([], ["student=unknown"], ["student=segformer_b0", "training.seed=-1"]):
+            with self.subTest(extra=extra), redirect_stderr(StringIO()):
+                result = experiment.main(["submit-hydra", "--profile", str(self.profile),
+                                          *overrides, *extra])
+                self.assertEqual(result, 1)
+                self.assertEqual(self.calls, [])
 
     def test_pipeline_submits_entire_dag_with_cpu_gate_and_afterany_summary(self):
         run = self.pipeline()

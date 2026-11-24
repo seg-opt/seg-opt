@@ -18,7 +18,12 @@ dependencies = [
 ]
 
 [dependency-groups]
+submit = [
+    "hydra-core>=1.3.2,<1.4",
+    "pyyaml>=6.0.2",
+]
 dev = [
+    { include-group = "submit" },
     "pytest>=8.4.2,<9",
 ]
 
