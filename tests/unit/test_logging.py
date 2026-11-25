@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -6,16 +5,6 @@ import pytest
 
 from scripts.train import _wandb_run_config, _wandb_run_name
 from src.utils import logging as logging_utils
-
-
-def test_wandb_run_name_describes_experiment_config_and_seed():
-    config_path = Path(
-        "experiments/strong_teacher_distillation/fast_scnn_sard_uniform_b4_80e.yaml"
-    )
-
-    assert _wandb_run_name(config_path, 42) == (
-        "strong_teacher_distillation-fast_scnn_sard_uniform_b4_80e-seed42"
-    )
 
 
 def test_wandb_logger_appends_slurm_job_id(monkeypatch, tmp_path):
@@ -27,13 +16,13 @@ def test_wandb_logger_appends_slurm_job_id(monkeypatch, tmp_path):
 
     result = logging_utils.make_wandb_logger(
         tmp_path,
-        run_name="baselines_benchmark-pidnet_s_imagenet_80e-seed42",
+        run_name=_wandb_run_name({"teacher": "segformer_b4", "student": "segformer_b2", "seed": 42}),
     )
 
     assert result is logger
     wandb_logger.assert_called_once_with(
         project="seg-opt",
-        name="baselines_benchmark-pidnet_s_imagenet_80e-seed42-9445033",
+        name="teacher-segformer_b4-student-segformer_b2-seed42-9445033",
         save_dir=tmp_path / "wandb",
         log_model=False,
     )
@@ -69,6 +58,8 @@ def test_wandb_routing_and_tags(monkeypatch, tmp_path, method):
     run_config = _wandb_run_config(config, "full")
     assert run_config["seed"] == 42
     assert run_config["teacher"] == ("segformer_b4" if distillation else None)
+    expected_teacher = "segformer_b4" if distillation else "none"
+    assert _wandb_run_name(run_config) == f"teacher-{expected_teacher}-student-segformer_b2-seed42"
 
     logger = Mock()
     monkeypatch.setattr(logging_utils, "WandbLogger", logger)

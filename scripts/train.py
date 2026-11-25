@@ -68,9 +68,11 @@ def _checkpoint_callback(trainer: L.Trainer) -> ModelCheckpoint:
     return callbacks[0]
 
 
-def _wandb_run_name(config_path: Path, seed: int) -> str:
-    parts = [config_path.parent.name, config_path.stem, f"seed{seed}"]
-    return "-".join(part for part in parts if part)
+def _wandb_run_name(run_config: dict) -> str:
+    teacher = run_config["teacher"] or "none"
+    student = run_config["student"]
+    seed = run_config["seed"]
+    return f"teacher-{teacher}-student-{student}-seed{seed}"
 
 
 def _wandb_run_config(config: BaselineConfig, run_kind: str) -> dict:
@@ -150,7 +152,7 @@ def main() -> None:
         enable_nvtx_ranges=os.getenv("SEG_OPT_NVTX_RANGES") == "1",
         fast_dev_run=args.fast_dev_run,
         enable_wandb=not args.offline,
-        wandb_run_name=_wandb_run_name(args.config, config.training.seed),
+        wandb_run_name=_wandb_run_name(wandb_config),
         wandb_config=wandb_config,
     )
     if trainer.logger is not None:
