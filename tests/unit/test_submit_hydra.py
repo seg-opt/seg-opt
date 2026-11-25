@@ -194,3 +194,16 @@ def test_invalid_composition_never_submits(launcher, overrides):
     assert submission.returncode != 0
     assert not list(trace.glob("*.sbatch"))
     assert not output.exists()
+
+
+@pytest.mark.parametrize("project", [None, "custom-project"])
+def test_submit_only_exports_an_explicit_wandb_project(launcher, project):
+    if project:
+        launcher[3]["WANDB_PROJECT"] = project
+    result = submit(launcher, "student=segformer_b2")
+    assert result.returncode == 0, result.stderr
+    for job_id in (101, 102):
+        _, _, trace, _ = launcher
+        script = (trace / f"{job_id}.sbatch").read_text()
+        assert ("export WANDB_PROJECT=" in script) == bool(project)
+        assert run_job(launcher, job_id)["env"]["WANDB_PROJECT"] == project

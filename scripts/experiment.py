@@ -164,7 +164,10 @@ def load_profile(args, root):
             raise ValueError(f"unexpanded environment variable in {key}")
         profile[key] = str(Path(value).expanduser().resolve())
     profile["wandb_mode"] = args.wandb_mode or os.environ.get("WANDB_MODE", profile.get("wandb_mode", "offline"))
-    profile["wandb_project"] = os.environ.get("WANDB_PROJECT", profile.get("wandb_project", "seg-opt"))
+    wandb_project = profile.pop("wandb_project", None)
+    wandb_project = os.getenv("WANDB_PROJECT") or wandb_project
+    if wandb_project:
+        profile["wandb_project"] = wandb_project
     if profile["wandb_mode"] not in {"offline", "online", "disabled"}:
         raise ValueError("invalid WANDB_MODE")
     if not Path(profile["image_path"]).is_file():
@@ -273,14 +276,24 @@ def job_environment(manifest, definition):
     for key in ("PYTHONPATH", "PYTHONHOME"):
         environment.pop(key, None)
     environment.update({key.upper(): str(profile[key]) for key in
-                        ("image_path", "data_path", "output_path", "cache_path", "wandb_project")})
+                        ("image_path", "data_path", "output_path", "cache_path")})
+    wandb_project = profile.get("wandb_project")
+    if wandb_project:
+        environment["WANDB_PROJECT"] = wandb_project
+    else:
+        environment.pop("WANDB_PROJECT", None)
     environment.update(REPO_PATH=manifest["snapshot"], SLURM_SUBMIT_DIR=manifest["snapshot"])
     environment["WANDB_MODE"] = definition.get("wandb_mode", profile["wandb_mode"])
     for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
         environment[prefix + "PYTHONPATH"] = "/workspace"
         environment[prefix + "PYTHONHOME"] = ""
         environment[prefix + "WANDB_MODE"] = environment["WANDB_MODE"]
-        environment[prefix + "WANDB_PROJECT"] = profile["wandb_project"]
+        if environment.get("WANDB_RUN_GROUP"):
+            environment[prefix + "WANDB_RUN_GROUP"] = environment["WANDB_RUN_GROUP"]
+        if wandb_project:
+            environment[prefix + "WANDB_PROJECT"] = wandb_project
+        else:
+            environment.pop(prefix + "WANDB_PROJECT", None)
     return environment
 
 

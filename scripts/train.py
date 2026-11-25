@@ -15,7 +15,7 @@ from src.models.dinov3_mask2former import DINOv3Mask2FormerSegmenter
 from src.train.trainer import create_trainer
 from src.utils.artifacts import sha256_file
 from src.utils.logging import configure_logging
-from src.utils.utils import load_config, resolved_config
+from src.utils.utils import BaselineConfig, load_config, resolved_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,6 +73,19 @@ def _wandb_run_name(config_path: Path, seed: int) -> str:
     return "-".join(part for part in parts if part)
 
 
+def _wandb_run_config(config: BaselineConfig, run_kind: str) -> dict:
+    distillation = config.distillation
+    teacher = load_config(distillation.teacher.config_path).model.name if distillation else None
+    return {
+        "dataset": config.data.dataset,
+        "method": distillation.method if distillation else "supervised",
+        "student": config.model.name,
+        "teacher": teacher,
+        "seed": config.training.seed,
+        "run_kind": run_kind,
+    }
+
+
 def _initialize_transfer_weights(
     model: DINOv3Mask2FormerSegmenter, checkpoint_path: Path
 ) -> None:
@@ -124,6 +137,8 @@ def main() -> None:
         len(components.test_dataset),
         components.split_manifest.sha256,
     )
+    run_kind = "smoke" if args.fast_dev_run else "full"
+    wandb_config = _wandb_run_config(config, run_kind)
     trainer = create_trainer(
         output_dir=output_dir,
         max_epochs=config.training.epochs,
@@ -136,9 +151,10 @@ def main() -> None:
         fast_dev_run=args.fast_dev_run,
         enable_wandb=not args.offline,
         wandb_run_name=_wandb_run_name(args.config, config.training.seed),
+        wandb_config=wandb_config,
     )
     if trainer.logger is not None:
-        trainer.logger.log_hyperparams(resolved_config(config))
+        trainer.logger.log_hyperparams({**resolved_config(config), **wandb_config})
 
     log.info("Starting %s run", "smoke" if args.fast_dev_run else "full")
     trainer.fit(
@@ -156,9 +172,10 @@ def main() -> None:
         checkpoint_path,
         output_dir,
         devices=args.devices,
-        run_kind="smoke" if args.fast_dev_run else "full",
+        run_kind=run_kind,
         mask_variant=config.data.mask_variant,
         trainer=trainer,
+        include_validation_samples=True,
     )
     log.info(
         "Run complete: val mIoU=%.4f, test mIoU=%.4f, artifacts=%s",
