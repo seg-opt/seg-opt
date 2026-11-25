@@ -1,0 +1,6 @@
+# @package model
+
+name: segformer_b4
+model_id: nvidia/mit-b4
+pretrained: true
+freeze_backbone: false

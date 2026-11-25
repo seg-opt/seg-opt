@@ -1,0 +1,18 @@
+# @package _global_
+
+distillation:
+  teacher:
+    checkpoint_path: results/sard/ade20k/segformer_b4/seed42/checkpoints/best.ckpt
+    config_path: teacher_config.yaml
+_teacher_overrides:
+  - dataset=ade20k
+  - method=supervised
+  - teacher=none
+  - student=segformer_b4
+  - ~metrics
+  - training.output_dir=results/sard/ade20k/segformer_b4/seed42
+  - training.epochs=20
+  - training.batch_size=2
+  - training.accumulate_grad_batches=8
+  - training.learning_rate=0.0003
+  - training.backbone_learning_rate=3e-05

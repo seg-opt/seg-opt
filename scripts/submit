@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+after=
+stage=both
+disabled=0
+checkpoint=
+init_checkpoint=
+while (( $# )); do
+    case "$1" in
+        --after-job) after=${2:?provide a Slurm job ID}; shift 2 ;;
+        --smoke-only|--full-only)
+            if [[ $stage != both ]]; then
+                echo 'Use only one of --smoke-only or --full-only' >&2
+                exit 2
+            fi
+            if [[ $1 == --smoke-only ]]; then stage=smoke; else stage=train; fi
+            shift
+            ;;
+        --disable-wandb) disabled=1; shift ;;
+        --evaluate) checkpoint=${2:?provide a checkpoint}; shift 2 ;;
+        --init-checkpoint) init_checkpoint=${2:?provide a checkpoint}; shift 2 ;;
+        --*) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+if [[ -n $after && ! $after =~ ^[1-9][0-9]*$ ]]; then
+    echo 'Expected a numeric job ID for --after-job' >&2
+    exit 2
+fi
+
+bundle() {
+    uv run --only-group submit python -m scripts.compose_experiment --bundle "$@"
+}
+
+project_data="$HOME/pl1200-01/project_data"
+export IMAGE_PATH="${IMAGE_PATH:-$project_data/containers/seg-opt/development/current.sif}"
+export DATA_PATH="${DATA_PATH:-$project_data/datasets}"
+export OUTPUT_PATH="${OUTPUT_PATH:-$PWD/results}"
+
+[[ -f $IMAGE_PATH ]] || { echo "error: image not found: $IMAGE_PATH" >&2; exit 1; }
+[[ -d $DATA_PATH ]] || { echo "error: dataset directory not found: $DATA_PATH" >&2; exit 1; }
+if [[ -n $checkpoint && -n $init_checkpoint ]]; then
+    echo '--evaluate and --init-checkpoint cannot be combined' >&2
+    exit 2
+fi
+config=$(bundle "$@")
+mkdir -p "$OUTPUT_PATH/experiments"
+OUTPUT_PATH=$(cd "$OUTPUT_PATH" && pwd -P)
+run=$(mktemp -d "$OUTPUT_PATH/experiments/hydra.XXXXXXXX")
+container_run="/output/experiments/${run##*/}"
+
+job_commands='
+run_config() {
+    local module=$1 bundle=$2 label=$3 directory config_path
+    shift 3
+    directory=$(mktemp -d "${TMPDIR:-/tmp}/seg-opt-config.XXXXXXXX")
+    config_path="$directory/$label.yaml"
+    python -m scripts.compose_experiment --unpack "$config_path" "$bundle"
+    python -m "$module" --config "$config_path" --devices 1 "$@"
+}
+'
+
+batch_header() {
+    local mode=$1 project=$2 group=$3
+    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'export REPO_PATH="$PWD"'
+    printf 'export WANDB_MODE=%q SINGULARITYENV_WANDB_MODE=%q APPTAINERENV_WANDB_MODE=%q\n' "$mode" "$mode" "$mode"
+    printf 'export WANDB_PROJECT=%q SINGULARITYENV_WANDB_PROJECT=%q APPTAINERENV_WANDB_PROJECT=%q\n' "$project" "$project" "$project"
+    if [[ -n $group ]]; then
+        printf 'export WANDB_RUN_GROUP=%q SINGULARITYENV_WANDB_RUN_GROUP=%q APPTAINERENV_WANDB_RUN_GROUP=%q\n' "$group" "$group" "$group"
+    fi
+}
+
+batch_command() {
+    local module=$1 payload=$2 output=$3 label
+    shift 3
+    label=${output##*/}
+    printf 'bash scripts/train.sbatch bash -euc %q _ %q %q %q --output-dir %q' \
+        "$job_commands"'run_config "$@"' "$module" "$payload" "$label" "$output"
+    if (( $# )); then printf ' %q' "$@"; fi
+    printf '\n'
+}
+
+queue() {
+    local name=$1 mem=$2 time=$3 dependency=$4
+    local -a resources=(--parsable --export=ALL --account=pl1200-01 --partition=proxima --constraint=h100
+                        --gpus-per-node=1 --cpus-per-task=8 --chdir="$PWD")
+    if [[ -n $dependency ]]; then
+        resources+=(--dependency="afterok:$dependency" --kill-on-invalid-dep=yes)
+    fi
+    local job
+    job=$(sbatch "${resources[@]}" --job-name="seg-hydra-$name" --mem="$mem" --time="$time" \
+        --output="$run/$name-%j.out" --error="$run/$name-%j.err") || return
+    job=${job%%;*}
+    if [[ ! $job =~ ^[1-9][0-9]*$ ]]; then
+        printf 'Invalid Slurm job ID: %s\n' "$job" >&2
+        return 1
+    fi
+    printf '%s\n' "$job"
+}
+
+single_batch() {
+    local mode=$1 output=$2 module=$3
+    shift 3
+    batch_header "$mode" "${WANDB_PROJECT:-seg-opt}" "${WANDB_RUN_GROUP:-}"
+    batch_command "$module" "$config" "$output" "$@"
+}
+
+module=scripts.train
+smoke_flags=(--fast-dev-run)
+flags=()
+if [[ -n $checkpoint ]]; then
+    module=scripts.evaluate
+    smoke_flags=(--smoke-run)
+    flags=(--checkpoint "$checkpoint")
+    if [[ $stage == both ]]; then stage=train; fi
+elif [[ -n $init_checkpoint ]]; then
+    flags+=(--init-checkpoint "$init_checkpoint")
+fi
+if (( disabled )) && [[ $module == scripts.train ]]; then flags+=(--offline); fi
+if (( disabled )); then
+    smoke_mode=disabled
+    train_mode=disabled
+else
+    smoke_mode=offline
+    train_mode=online
+fi
+
+if [[ $stage != train ]]; then
+    after=$(single_batch "$smoke_mode" "$container_run/smoke" "$module" "${flags[@]}" "${smoke_flags[@]}" |
+        queue smoke 64G 00:30:00 "$after")
+    printf 'Smoke job: %s\n' "$after"
+fi
+printf 'Results: %s\n' "$run"
+if [[ $stage != smoke ]]; then
+    if ! job=$(single_batch "$train_mode" "$container_run/train" "$module" "${flags[@]}" |
+        queue train 128G 3-00:00:00 "$after"); then
+        if [[ $stage == both ]]; then
+            printf 'Training submission failed. Smoke job %s was submitted.\n' "$after" >&2
+        fi
+        exit 1
+    fi
+    printf 'Training job: %s\n' "$job"
+fi

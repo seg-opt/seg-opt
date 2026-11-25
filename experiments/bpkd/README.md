@@ -12,15 +12,15 @@ BatchNorm layer more than one value per channel.
 Train the teacher first:
 
 ```bash
-sbatch --account=<SERVICE_ID> scripts/train.sbatch \
-  --image-path /path/to/development.sif \
-  --data-path /mnt/storage_6/project_data/pl1200-01/datasets \
-  python -m scripts.train \
-  --config experiments/bpkd/mask2former_teacher_clean.yaml \
-  --devices 1
+scripts/submit dataset=lunar method=supervised teacher=none student=mask2former_swinl \
+  training.batch_size=1 training.accumulate_grad_batches=16 training.learning_rate=0.0001 \
+  training.backbone_learning_rate=1e-05
 ```
 
 ## First: Mask2Former small-rock screen
+
+Set `TEACHER_CHECKPOINT` to the container-visible checkpoint path before
+running either student campaign.
 
 Before the Fast-SCNN suite, use the trained teacher itself as the matched
 task-only Mask2Former-SwinL control. Then train two fresh Mask2Former-SwinL
@@ -30,8 +30,13 @@ the boundary objective helps the Mask2Former target model, rather than testing
 only transfer to Fast-SCNN.
 
 ```bash
-sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
-  experiments/bpkd/train_mask2former_screen.sbatch
+for method in vanilla bpkd; do
+  scripts/submit dataset=lunar "method=$method" \
+    teacher=bpkd_mask2former_swinl student=mask2former_swinl \
+    training.batch_size=1 training.accumulate_grad_batches=16 \
+    training.learning_rate=0.0001 training.backbone_learning_rate=0.00001 \
+    "distillation.teacher.checkpoint_path=$TEACHER_CHECKPOINT"
+done
 ```
 
 Compare the teacher/control, vanilla KD, and BPKD on validation small-rock IoU
@@ -42,19 +47,33 @@ teacher would be a stronger subsequent test of distillation capacity.
 
 ## Fast-SCNN suite
 
-After `results/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt`
-exists, submit the eight-run array:
+The default teacher is
+`results/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt`.
+To use a new teacher run, pass `distillation.teacher.checkpoint_path` with the
+container-visible path to its checkpoint. Submit the supervised control without
+a teacher override, then submit each KD variant separately.
 
 ```bash
-sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
-  experiments/bpkd/train.sbatch
+scripts/submit dataset=lunar method=supervised teacher=none student=fast_scnn training.batch_size=2 \
+  training.accumulate_grad_batches=8 training.learning_rate=0.0005 \
+  training.backbone_learning_rate=null
+student_args=(dataset=lunar teacher=bpkd_mask2former_swinl student=fast_scnn
+  training.batch_size=2 training.accumulate_grad_batches=8
+  training.learning_rate=0.0005 training.backbone_learning_rate=null
+  "distillation.teacher.checkpoint_path=$TEACHER_CHECKPOINT")
+scripts/submit method=vanilla "${student_args[@]}"
+scripts/submit method=bpkd "${student_args[@]}" distillation.edge_weight=0
+scripts/submit method=bpkd "${student_args[@]}" distillation.body_weight=0
+for width in 3 5 7 9; do
+  scripts/submit method=bpkd "${student_args[@]}" "distillation.edge_kernel_size=$width"
+done
 ```
 
 The primary comparison is `bpkd_w7`; widths 3, 5, 7, and 9 are exploratory.
 Select a width by validation Trimap small-rock IoU only, then report its held-out
 test metrics. Checkpoints are still selected by validation mIoU.
 
-| Array task | Variant |
+| Variant index | Variant |
 |---:|---|
 | 0 | Task-only Fast-SCNN control |
 | 1 | Target-aware vanilla pixel KD |

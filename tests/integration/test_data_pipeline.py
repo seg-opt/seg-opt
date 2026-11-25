@@ -3,12 +3,21 @@ from pathlib import Path
 import numpy as np
 
 from src.data.dataset import _decode_pair, find_pairs, load_split_manifest
-from src.utils.utils import load_config
+from tests.unit.test_submit_hydra import load_hydra_config
 
 
-def test_configured_real_dataset_and_print_entries():
+def test_configured_real_dataset_and_print_entries(tmp_path):
     """Validate real dataset counts, split manifest, decoded shapes, and classes."""
-    config = load_config("experiments/baselines_benchmark/resnet34_unet.yaml").data
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=supervised',
+        'teacher=none',
+        'student=resnet34_unet',
+        'training.output_dir=results/baselines_benchmark/resnet34_unet/seed42',
+        'training.learning_rate=0.0003',
+        'training.backbone_learning_rate=3e-05',
+    ).data
     root = Path(config.dataset_root)
 
     assert root.is_dir()

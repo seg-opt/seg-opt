@@ -3,7 +3,7 @@ import torch
 
 from src.models.segmentation import make_segmentation_head
 from src.train.losses import SegmentationLoss
-from src.utils.utils import load_config
+from tests.unit.test_submit_hydra import load_hydra_config
 
 
 def test_segmentation_loss_rewards_correct_rare_class_predictions_and_ignores_padding():
@@ -74,8 +74,19 @@ def test_configurable_segmentation_heads_preserve_spatial_shape(head_type):
     assert head(torch.randn(2, 12, 8, 9)).shape == (2, 4, 8, 9)
 
 
-def test_benchmark_dinov3_config_is_a_full_frame_frozen_linear_probe():
-    config = load_config("experiments/baselines_benchmark/dinov3_vitl16.yaml")
+def test_benchmark_dinov3_config_is_a_full_frame_frozen_linear_probe(tmp_path):
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=supervised',
+        'teacher=none',
+        'student=dinov3_vitl16',
+        'training.output_dir=results/baselines_benchmark/dinov3_vitl16/seed42',
+        'training.batch_size=2',
+        'training.accumulate_grad_batches=8',
+        'training.learning_rate=0.001',
+        'training.backbone_learning_rate=null',
+    )
 
     assert config.model.name == "dinov3_vitl16"
     assert config.model.model_id == "facebook/dinov3-vitl16-pretrain-lvd1689m"

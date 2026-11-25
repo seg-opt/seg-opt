@@ -23,6 +23,7 @@ from src.baselines import BaselineComponents
 from src.data.dataset import SplitManifest
 from src.train.losses import SegmentationLoss
 from src.train.trainer import BaselineModule, LusnarExamplesCallback, create_trainer
+from tests.unit.test_submit_hydra import load_hydra_config
 from src.utils.utils import TeacherConfig, load_config, write_resolved_config
 
 
@@ -56,9 +57,28 @@ class TinyDataset(Dataset):
 
 @pytest.mark.parametrize("lusnar", [False, True])
 def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path, lusnar):
-    config = load_config(
-        "experiments/lusnar/segformer_b0.yaml" if lusnar
-        else "experiments/baselines_benchmark/fast_scnn.yaml"
+    config = (
+        load_hydra_config(
+            tmp_path,
+            'dataset=lusnar',
+            'method=supervised',
+            'teacher=none',
+            'student=segformer_b0',
+            'training.output_dir=results/lusnar/segformer_b0/seed42',
+            'training.epochs=20',
+        )
+        if lusnar else load_hydra_config(
+            tmp_path,
+            'dataset=lunar',
+            'method=supervised',
+            'teacher=none',
+            'student=fast_scnn',
+            'training.output_dir=results/baselines_benchmark/fast_scnn/seed42',
+            'training.batch_size=16',
+            'training.accumulate_grad_batches=1',
+            'training.learning_rate=0.0005',
+            'training.backbone_learning_rate=null',
+        )
     )
     config = replace(
         config,
@@ -145,7 +165,18 @@ def test_checkpoint_evaluation_writes_complete_local_artifact(tmp_path, lusnar):
 
 
 def test_artifact_preparation_refuses_to_mix_runs(tmp_path):
-    config = load_config("experiments/baselines_benchmark/fast_scnn.yaml")
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=supervised',
+        'teacher=none',
+        'student=fast_scnn',
+        'training.output_dir=results/baselines_benchmark/fast_scnn/seed42',
+        'training.batch_size=16',
+        'training.accumulate_grad_batches=1',
+        'training.learning_rate=0.0005',
+        'training.backbone_learning_rate=null',
+    )
     output_dir = tmp_path / "run"
     output_dir.mkdir()
     (output_dir / "old-metrics.json").write_text("{}", encoding="utf-8")
@@ -155,7 +186,18 @@ def test_artifact_preparation_refuses_to_mix_runs(tmp_path):
 
 
 def test_distillation_artifact_copies_teacher_config_and_hashes_provenance(tmp_path):
-    config = load_config("experiments/bpkd/fast_scnn_bpkd_w7_clean.yaml")
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=bpkd',
+        'teacher=bpkd_mask2former_swinl',
+        'student=fast_scnn',
+        'training.output_dir=results/bpkd/fast_scnn_clean/bpkd_w7/seed42',
+        'training.batch_size=2',
+        'training.accumulate_grad_batches=8',
+        'training.learning_rate=0.0005',
+        'training.backbone_learning_rate=null',
+    )
     checkpoint = tmp_path / "teacher.ckpt"
     checkpoint.write_bytes(b"trained-teacher")
     assert config.distillation is not None
@@ -176,9 +218,41 @@ def test_distillation_artifact_copies_teacher_config_and_hashes_provenance(tmp_p
     assert (tmp_path / "artifact" / "teacher_config.yaml").read_text(
         encoding="utf-8"
     ) == Path(config.distillation.teacher.config_path).read_text(encoding="utf-8")
+    assert Path(prepared.distillation.teacher.config_path) == tmp_path / "artifact" / "teacher_config.yaml"
+    Path(config.distillation.teacher.config_path).unlink()
+    assert load_config(tmp_path / "artifact" / "config.yaml").distillation == prepared.distillation
     assert metadata is not None
     assert metadata["teacher"]["checkpoint_sha256"]
     assert metadata["teacher"]["config_sha256"]
+
+
+def test_evaluation_uses_saved_teacher_config_when_the_source_was_removed(tmp_path):
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=bpkd',
+        'teacher=bpkd_mask2former_swinl',
+        'student=fast_scnn',
+        'training.output_dir=results/bpkd/fast_scnn_clean/bpkd_w7/seed42',
+        'training.batch_size=2',
+        'training.accumulate_grad_batches=8',
+        'training.learning_rate=0.0005',
+        'training.backbone_learning_rate=null',
+    )
+    teacher_source = Path(config.distillation.teacher.config_path)
+    archived = tmp_path / "archived"
+    archived.mkdir()
+    saved_teacher = archived / "teacher_config.yaml"
+    saved_teacher.write_bytes(teacher_source.read_bytes())
+    teacher_source.unlink()
+    config_path = archived / "config.yaml"
+    write_resolved_config(config, config_path)
+
+    prepared = prepare_artifact_directory(config, tmp_path / "evaluate", source_config=config_path)
+
+    copied = Path(prepared.distillation.teacher.config_path)
+    assert copied.parent == tmp_path / "evaluate"
+    assert copied.read_bytes() == saved_teacher.read_bytes()
 
 
 def _write_examples(directory):
@@ -202,7 +276,15 @@ def _write_examples(directory):
 
 def test_examples_use_indexed_labels_and_upload_one_wandb_artifact(tmp_path, monkeypatch):
     _write_examples(tmp_path / "examples")
-    config = load_config("experiments/lusnar/segformer_b0.yaml")
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lusnar',
+        'method=supervised',
+        'teacher=none',
+        'student=segformer_b0',
+        'training.output_dir=results/lusnar/segformer_b0/seed42',
+        'training.epochs=20',
+    )
     model = TinyBaseline(5)
     with torch.no_grad():
         model.projection.weight.zero_()
@@ -258,7 +340,15 @@ def test_examples_use_indexed_labels_and_upload_one_wandb_artifact(tmp_path, mon
 
 
 def test_examples_callback_is_removed_if_evaluation_fails(tmp_path):
-    config = load_config("experiments/lusnar/segformer_b0.yaml")
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lusnar',
+        'method=supervised',
+        'teacher=none',
+        'student=segformer_b0',
+        'training.output_dir=results/lusnar/segformer_b0/seed42',
+        'training.epochs=20',
+    )
     checkpoint = tmp_path / "checkpoint.ckpt"
     checkpoint.touch()
     module = MagicMock()

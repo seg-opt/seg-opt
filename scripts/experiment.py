@@ -36,10 +36,6 @@ def build_parser():
     commands = parser.add_subparsers(dest="command", required=True)
     submit_parser = commands.add_parser("submit")
     submit_parser.add_argument("configs", nargs="+")
-    hydra_submit = commands.add_parser("submit-hydra")
-    hydra_submit.add_argument("overrides", nargs="+")
-    hydra_submit.add_argument("--profile", type=Path)
-    hydra_submit.set_defaults(wandb_mode=None)
     pipeline = commands.add_parser("pipeline")
     pipeline.add_argument("--config", required=True)
     pipeline.add_argument("--baseline-artifacts", required=True)
@@ -202,36 +198,6 @@ def stage(config=None, needs=(), kind="gpu", smoke=False):
     return {"config": config, "needs": list(needs), "kind": kind, "smoke": smoke}
 
 
-def compose_config(source, overrides, hashes):
-    try:
-        from hydra import compose, initialize_config_dir
-        from hydra.errors import HydraException
-        from omegaconf import OmegaConf
-        from omegaconf.errors import OmegaConfBaseException
-        from src.utils.utils import load_config
-    except ImportError as error:
-        raise ValueError("submit-hydra requires the submit dependency group") from error
-
-    directory = source / "experiments/hydra"
-    try:
-        with initialize_config_dir(config_dir=str(directory), version_base="1.3"):
-            config = compose(config_name="config", overrides=overrides)
-        yaml = OmegaConf.to_yaml(config, resolve=True)
-    except (HydraException, OmegaConfBaseException) as error:
-        raise ValueError(f"Hydra configuration failed: {error}") from error
-
-    generated = directory / "submitted"
-    generated.mkdir()
-    config_path = generated / "train.yaml"
-    config_path.write_text(yaml, encoding="utf-8")
-    load_config(config_path)
-    override_path = generated / "overrides.json"
-    atomic_json(override_path, overrides)
-    for path in (config_path, override_path):
-        hashes[path.relative_to(source).as_posix()] = sha256(path)
-    return config_path.relative_to(source).as_posix()
-
-
 def submit(args):
     root = repository()
     profile = load_profile(args, root)
@@ -251,7 +217,7 @@ def submit(args):
         stages["gate"] = stage(needs=["teacher"] if args.teacher_config else [], kind="cpu")
         stages["kd-smoke"] = stage(config, ["gate"], smoke=True)
         stages["kd"] = stage(config, ["kd-smoke"])
-    elif args.command == "submit":
+    else:
         configs = [safe_config(value, root) for value in args.configs]
         names = [Path(config).stem for config in configs]
         if len(set(names)) != len(names) or any(name == "summary" or name.endswith("-smoke") for name in names):
@@ -270,10 +236,6 @@ def submit(args):
     (run / "logs").mkdir()
     (run / "artifacts").mkdir()
     hashes = snapshot(root, run / "source")
-    if args.command == "submit-hydra":
-        config = compose_config(run / "source", args.overrides, hashes)
-        stages["train-smoke"] = {**stage(config, smoke=True), "wandb_mode": "offline"}
-        stages["train"] = {**stage(config, ["train-smoke"]), "wandb_mode": "online"}
     stages["summary"] = stage(needs=list(stages), kind="cpu")
     manifest = {"schema_version": 1, "id": run_id, "run": str(run), "snapshot": str(run / "source"),
                 "profile": profile, "source_hashes": hashes,
@@ -665,7 +627,7 @@ def worker(args):
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
-        if args.command in {"submit", "submit-hydra", "pipeline"}:
+        if args.command in {"submit", "pipeline"}:
             result = {"run": submit(args)}
         elif args.command == "status":
             result = status(args.run)

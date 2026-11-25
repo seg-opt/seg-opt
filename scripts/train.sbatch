@@ -2,7 +2,7 @@
 # Submit with either exported variables or explicit paths, for example:
 # sbatch --account=<grant-id> scripts/train.sbatch \
 #   --image-path /path/to/development.sif --data-path /path/to/datasets \
-#   python -m scripts.train --config experiments/baselines_benchmark/fast_scnn.yaml --devices 1
+#   python -m scripts.train --config path/to/resolved-config.yaml --devices 1
 #SBATCH --job-name=seg-opt-train
 #SBATCH --partition=proxima
 #SBATCH --constraint=h100
@@ -105,9 +105,8 @@ if [[ ! $ncu_launch_skip_before_match =~ ^[0-9]+$ || ! $ncu_launch_count =~ ^[1-
 fi
 
 if (($# == 0)); then
-    set -- python -m scripts.train \
-        --config experiments/baselines_benchmark/fast_scnn.yaml \
-        --devices 1
+    echo "error: provide a container command or use scripts/submit" >&2
+    exit 2
 fi
 
 echo "Job:       $SLURM_JOB_ID"

@@ -1,0 +1,6 @@
+# @package _global_
+
+distillation:
+  teacher:
+    checkpoint_path: results/lusnar/dinov3_mask2former_1024/seed42/checkpoints/best.ckpt
+    config_path: results/lusnar/dinov3_mask2former_1024/seed42/config.yaml

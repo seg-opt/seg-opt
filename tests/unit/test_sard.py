@@ -17,6 +17,7 @@ from src.models.segmentation import FeatureTap
 from src.train.losses import SegmentationLoss
 from src.train.trainer import BaselineModule, DistillationModule, create_trainer
 from src.utils.utils import load_config
+from tests.unit.test_submit_hydra import load_hydra_config
 
 CLASS_NAMES = ["background", "sky", "small_rock", "large_rock"]
 
@@ -272,9 +273,16 @@ def test_fast_scnn_tap_matches_the_declared_channels_at_stride_8():
 
 
 @pytest.mark.parametrize("variant", ["full", "uniform"])
-def test_checked_in_sard_configs(variant):
-    config = load_config(
-        f"experiments/sard/fast_scnn_sard_{variant}_from_segformer_b4.yaml"
+def test_checked_in_sard_configs(variant, tmp_path):
+    uniform = (
+        "distillation.sard_edge_weight=0.0", "distillation.sard_corner_weight=0.0",
+        "distillation.sard_density_weight=0.0",
+    ) if variant == "uniform" else ()
+    config = load_hydra_config(
+        tmp_path, "dataset=lunar", "method=sard", "teacher=benchmark_segformer_b4", "student=fast_scnn",
+        f"training.output_dir=results/sard/fast_scnn_from_segformer_b4/{variant}/seed42",
+        "training.learning_rate=0.0005", "training.backbone_learning_rate=null",
+        *uniform,
     )
 
     assert config.model.name == "fast_scnn"
@@ -298,19 +306,33 @@ def test_checked_in_sard_configs(variant):
         distillation.sard_density_weight,
     )
     assert betas == ((2.0, 1.0, 1.0) if variant == "full" else (0.0, 0.0, 0.0))
-    assert Path(distillation.teacher.config_path).parts[-2:] == (
-        "baselines_benchmark",
-        "segformer_b4.yaml",
-    )
+    assert load_config(distillation.teacher.config_path).model.name == "segformer_b4"
 
 
 @pytest.mark.parametrize("variant", ["full", "uniform"])
-def test_resnet34_sard_configs_preserve_the_controlled_cnn_protocol(variant):
-    reference = load_config(
-        "experiments/logit_distillation/fast_scnn_from_resnet34_unet.yaml"
+def test_resnet34_sard_configs_preserve_the_controlled_cnn_protocol(variant, tmp_path):
+    reference = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=vanilla',
+        'teacher=benchmark_resnet34_unet',
+        'student=fast_scnn',
+        'training.output_dir=results/logit_distillation/fast_scnn_from_resnet34_unet/seed42',
+        'training.batch_size=16',
+        'training.accumulate_grad_batches=1',
+        'training.learning_rate=0.0005',
+        'training.backbone_learning_rate=null',
     )
-    config = load_config(
-        f"experiments/sard/fast_scnn_sard_{variant}_from_resnet34_unet.yaml"
+    uniform = (
+        "distillation.sard_edge_weight=0.0", "distillation.sard_corner_weight=0.0",
+        "distillation.sard_density_weight=0.0",
+    ) if variant == "uniform" else ()
+    config = load_hydra_config(
+        tmp_path, "dataset=lunar", "method=sard", "teacher=benchmark_resnet34_unet", "student=fast_scnn",
+        f"training.output_dir=results/sard/fast_scnn_from_resnet34_unet/{variant}/seed42",
+        "training.learning_rate=0.0005", "training.backbone_learning_rate=null",
+        "training.batch_size=16", "training.accumulate_grad_batches=1",
+        *uniform,
     )
 
     assert config.model == reference.model
@@ -330,7 +352,8 @@ def test_resnet34_sard_configs_preserve_the_controlled_cnn_protocol(variant):
     distillation = config.distillation
     assert distillation is not None and distillation.method == "sard"
     assert reference.distillation is not None
-    assert distillation.teacher == reference.distillation.teacher
+    assert distillation.teacher.checkpoint_path == reference.distillation.teacher.checkpoint_path
+    assert load_config(distillation.teacher.config_path) == load_config(reference.distillation.teacher.config_path)
     assert distillation.spatial_stride == 8
     assert distillation.sard_feature_weight == 1.0
     assert distillation.sard_distribution_weight == 0.5

@@ -94,6 +94,8 @@ def _checkpoint_epoch(path: Path) -> int:
 def prepare_artifact_directory(
     config: BaselineConfig,
     output_dir: Path,
+    *,
+    source_config: Path | None = None,
 ) -> BaselineConfig:
     output_dir = output_dir.expanduser().resolve()
     if output_dir.exists():
@@ -111,8 +113,16 @@ def prepare_artifact_directory(
     if config.distillation is not None:
         teacher_config = Path(config.distillation.teacher.config_path)
         if not teacher_config.is_file():
-            raise FileNotFoundError(f"teacher config not found: {teacher_config}")
-        shutil.copy2(teacher_config, output_dir / "teacher_config.yaml")
+            sidecar = source_config.with_name("teacher_config.yaml") if source_config else None
+            if sidecar is None or not sidecar.is_file():
+                raise FileNotFoundError(f"teacher config not found: {teacher_config}")
+            teacher_config = sidecar
+        saved_teacher_config = output_dir / "teacher_config.yaml"
+        shutil.copy2(teacher_config, saved_teacher_config)
+        config = replace(config, distillation=replace(
+            config.distillation,
+            teacher=replace(config.distillation.teacher, config_path=str(saved_teacher_config)),
+        ))
     resolved = replace(
         config,
         data=replace(config.data, split_manifest=str(split_path)),
@@ -272,7 +282,7 @@ def main() -> None:
         "evaluation" if config.data.mask_variant == "ground" else "evaluation_clean"
     )
     output_dir = args.output_dir or checkpoint_path.parent.parent / default_evaluation_dir
-    config = prepare_artifact_directory(config, output_dir)
+    config = prepare_artifact_directory(config, output_dir, source_config=args.config)
     log = configure_logging(output_dir, args.verbose)
     L.seed_everything(config.training.seed, workers=True)
     log.info(

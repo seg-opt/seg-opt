@@ -1,0 +1,16 @@
+# @package _global_
+
+distillation:
+  teacher:
+    checkpoint_path: results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt
+    config_path: teacher_config.yaml
+_teacher_overrides:
+  - dataset=lunar
+  - method=supervised
+  - teacher=none
+  - student=dinov3_vitl16_mask2former
+  - training.output_dir=results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42
+  - training.batch_size=1
+  - training.accumulate_grad_batches=16
+  - training.learning_rate=0.0001
+  - training.backbone_learning_rate=null

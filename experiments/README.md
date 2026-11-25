@@ -4,13 +4,13 @@
 
 Active full runs use 80 epochs in `baselines_benchmark/`,
 `logit_distillation/`, `bpkd/`, `sard/`, and `strong_teacher_distillation/`.
-Smoke limits are unchanged. `dinov3_mask2former/lunar_teacher_80e.yaml`
-is a historical recipe, not an active teacher config. Matching epochs alone
+Smoke limits are unchanged. `dinov3_mask2former/lunar_teacher_80e`
+identifies a historical teacher run. Matching epochs alone
 does not authorize checkpoint reuse: verify the full protocol and artifacts (see
 [strong-teacher guidance](strong_teacher_distillation/README.md)).
 
 Historical runs retain their budgets in immutable source snapshots and resolved
-artifact configs; changing repository YAML defaults does not rewrite those records.
+artifact configs; changing shared presets does not rewrite those records.
 Do not mix budgets or reuse unmatched teacher/control artifacts. New runs use
 unique runner outputs, not historical standalone directories.
 
@@ -18,7 +18,7 @@ unique runner outputs, not historical standalone directories.
 
 [`baselines_benchmark/`](baselines_benchmark/) compares Fast-SCNN and six teachers
 on clean masks with the aligned seed-42 split. ResNet101-U-Net is an optional
-extra outside the seven-run array. Require a positive validation teacher margin.
+extra outside the seven-run comparison. Require a positive validation teacher margin.
 
 ## BPKD
 
@@ -36,17 +36,94 @@ controls.
 [`dinov3_demo/`](dinov3_demo/) and [`dinov3_probe_v2/`](dinov3_probe_v2/) are
 standalone DINOv3 exploration, not part of the benchmark decision path.
 
-## Shared CLI and cluster profile
+## Hydra submit on Eagle
 
-Run these commands from the deployed repository root on HPC. The runner uses
-only the Python standard library; on Eagle, use `python3 -S` to bypass site
-hooks.
+Use `scripts/submit` for all experiments. Run it from the Eagle login host. To save an
+experiment as a Bash wrapper, put these lines in a `.sh` file and run it from
+the repository root:
 
 ```bash
-python3 -S scripts/experiment.py submit experiments/baselines_benchmark/fast_scnn.yaml
-python3 -S scripts/experiment.py submit \
-	experiments/baselines_benchmark/fast_scnn.yaml \
-	experiments/baselines_benchmark/resnet34_unet.yaml --seed 43
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Set this to a writable directory containing the selected teacher checkpoint.
+export OUTPUT_PATH="/path/to/writable/results"
+
+exec scripts/submit \
+  dataset=lunar method=vanilla \
+  teacher=lunar_segformer_b4 student=segformer_b2 \
+  training.seed=43 training.learning_rate=0.001
+```
+
+| Argument | Available presets |
+| --- | --- |
+| `dataset` | `lunar`, `ade20k`, `cityscapes`, `lusnar` |
+| `method` | `supervised`, `vanilla`, `bpkd`, `sard` |
+| `teacher` | `none` for supervised learning, or a preset in [`hydra/teacher/`](hydra/teacher/) |
+| `student` | A SegFormer, Fast-SCNN, ResNet U-Net, Mask2Former, or DINOv3 preset in [`hydra/student/`](hydra/student/) |
+
+Specify all four presets. Override config values with `section.key=value`,
+for example `training.seed=43`, `training.precision=fp32` or
+`distillation.vanilla_temperature=2.0`. The common defaults are in
+[`hydra/config.yaml`](hydra/config.yaml). If you override batch size or
+gradient accumulation, their product must equal 16. Quote an entire override
+argument when its value contains spaces or shell metacharacters.
+
+| Environment variable | What it sets |
+| --- | --- |
+| `IMAGE_PATH` | Development SIF path |
+| `DATA_PATH` | Dataset parent directory, mounted at `/datasets` |
+| `OUTPUT_PATH` | Writable results root (default `results/` in the checkout), mounted at `/output` and `/workspace/results` |
+| `CACHE_PATH` | Writable container cache directory |
+| `WANDB_PROJECT` | W&B project, default `seg-opt` |
+
+For `teacher=lunar_segformer_b4`, the checkpoint is read from
+`$OUTPUT_PATH/sard/teacher_segformer_b4/checkpoints/best.ckpt`. The launcher
+uses Eagle's `proxima` partition with one H100 per job. It submits a smoke
+job with W&B offline and a full job with W&B online that starts after the
+smoke succeeds. It prints both job IDs and the results directory. Each stage
+saves its resolved config with its results. Keep the same checkout in place
+until both jobs finish.
+
+### Submit options
+
+Each invocation submits one experiment. Use `--after-job ID` to wait for an
+existing successful job, `--smoke-only` or `--full-only` to select one stage,
+and `--disable-wandb` to disable the logger. Pass the preceding training job
+ID with `--after-job` for serial runs.
+
+Use `--evaluate CHECKPOINT` to evaluate or `--init-checkpoint PATH` to initialize
+training for transfer. For KD with a newly trained teacher, override
+`distillation.teacher.checkpoint_path`. All checkpoint paths must be visible
+inside the container.
+
+For example, use the same LUSNAR checkpoint for evaluation at 512×512 and
+transfer into Lunar:
+
+```bash
+scripts/submit --evaluate "$LUSNAR_CHECKPOINT" \
+  dataset=lusnar method=supervised teacher=none student=dinov3_vitl16_mask2former \
+    training.batch_size=2 training.accumulate_grad_batches=8 training.learning_rate=0.0001 \
+    training.backbone_learning_rate=null
+scripts/submit --init-checkpoint "$LUSNAR_CHECKPOINT" \
+  dataset=lunar method=supervised teacher=none student=dinov3_vitl16_mask2former \
+    training.batch_size=1 training.accumulate_grad_batches=16 training.learning_rate=0.0001 \
+    training.backbone_learning_rate=null
+```
+
+### Managed artifact validation and historical runs
+
+The existing snapshot-oriented runner also accepts a Hydra config exported
+for the scientific teacher-quality gate. Create the export inside the checkout,
+then run the managed pipeline from the repository root:
+
+```bash
+config_dir=$(mktemp -d experiments/hydra-export.XXXXXXXX)
+KD_CONFIG="$config_dir/student.yaml"
+uv run --only-group submit python -m scripts.compose_experiment \
+  dataset=lunar method=vanilla teacher=benchmark_resnet34_unet student=fast_scnn \
+    training.batch_size=16 training.accumulate_grad_batches=1 training.learning_rate=0.0005 \
+    training.backbone_learning_rate=null --write-config "$KD_CONFIG"
 ```
 
 Each config gets a smoke check before full training. Plain `submit` does not
@@ -112,17 +189,17 @@ rate; output-directory differences are intentionally ignored.
 SLURM owns the submitted dependencies, including the terminal summary on
 failure. Existing legacy jobs are not automatically adopted by these operations.
 
-Family sbatch files call `scripts/train.sbatch` directly.
+Hydra submissions use `scripts/train.sbatch` as the container entry point.
 
 ## Controlled CNN Vanilla Protocol
 
 The CNN configs distill ResNet34-U-Net or ResNet101-U-Net into
 Fast-SCNN using vanilla logit KD:
 
-| Teacher | Config relative to experiments/ |
+| Teacher | `teacher` preset |
 | --- | --- |
-| ResNet34-U-Net | logit_distillation/fast_scnn_from_resnet34_unet.yaml |
-| ResNet101-U-Net | logit_distillation/fast_scnn_from_resnet101_unet.yaml |
+| ResNet34-U-Net | `benchmark_resnet34_unet` |
+| ResNet101-U-Net | `benchmark_resnet101_unet` |
 
 Both preserve the supervised Fast-SCNN model, clean masks, aligned seed-42
 split, 512 x 768 images, augmentation, CE 1.0 + Dice 0.5 task loss, and
@@ -137,7 +214,7 @@ Run with `pipeline`. Student seed overrides
 43 and 44 leave the split and seed-42 teacher fixed. Batch 8 with accumulation
 2 is not BatchNorm-equivalent to physical batch 16, so SegFormer runs using
 that setting are not controlled CNN loss comparisons. The historical results
-below used 20 epochs; current YAMLs use 80. Compare only matched
+below used 20 epochs; current configurations use 80. Compare only matched
 training budgets and preserve the original resolved configs on HPC.
 
 ## CNN BPKD/SARD pilot

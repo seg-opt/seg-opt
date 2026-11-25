@@ -1,0 +1,6 @@
+# @package model
+
+name: mask2former_swinl
+model_id: facebook/mask2former-swin-large-ade-semantic
+pretrained: true
+freeze_backbone: false

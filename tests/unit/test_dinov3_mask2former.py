@@ -7,7 +7,7 @@ from src.models.dinov3_mask2former import (
     DINOv3Mask2FormerSegmenter,
     DINOv3PyramidBackbone,
 )
-from src.utils.utils import load_config
+from tests.unit.test_submit_hydra import load_hydra_config
 
 
 CLASS_NAMES = ("background", "sky", "small_rock", "large_rock")
@@ -99,9 +99,18 @@ def test_dinov3_mask2former_returns_scores_and_cap_feature() -> None:
     assert model.feature_stride_at(-1) == 32
 
 
-def test_lunar_teacher_config_uses_frozen_dinov3_mask2former() -> None:
-    config = load_config(
-        "experiments/dinov3_mask2former/lunar_teacher_80e.yaml"
+def test_lunar_teacher_config_uses_frozen_dinov3_mask2former(tmp_path) -> None:
+    config = load_hydra_config(
+        tmp_path,
+        'dataset=lunar',
+        'method=supervised',
+        'teacher=none',
+        'student=dinov3_vitl16_mask2former',
+        'training.output_dir=results/dinov3_mask2former/lunar_teacher_80e/seed42',
+        'training.batch_size=1',
+        'training.accumulate_grad_batches=16',
+        'training.learning_rate=0.0001',
+        'training.backbone_learning_rate=null',
     )
 
     assert config.model.name == "dinov3_vitl16_mask2former"
