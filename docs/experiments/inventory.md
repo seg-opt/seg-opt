@@ -15,7 +15,7 @@
 | Model | Teacher role | Student role |
 |---|---|---|
 | SegFormer-B4 | Teacher for vanilla logit KD, SARD, and CAP | — |
-| Mask2Former Swin-L | Teacher for vanilla KD and BPKD | Same-architecture distillation student |
+| Mask2Former Swin-L | Teacher for vanilla KD | Same-architecture distillation student |
 | SegFormer-B0 | Baseline teacher candidate | Student of SegFormer-B4 |
 | SegFormer-B2 | Baseline teacher candidate | — |
 | ResNet34–U-Net | Baseline teacher candidate | — |
@@ -25,7 +25,6 @@
 | Method | Variants present |
 |---|---|
 | Vanilla pixel/logit KD | Temperature-scaled pixelwise KL divergence |
-| BPKD | Body only; edge only; full body + edge, with kernel widths 3/5/7/9 |
 | SARD — Structure-Aware Representation Distillation | Full structure weighting; uniform-weight control |
 | CAP — Cross-Attention Projector feature distillation | ScaleKD-derived feature loss added to vanilla logit KD |
 
@@ -55,9 +54,6 @@
 | SegFormer-B4 → Fast-SCNN | Full SARD | Cityscapes | 43 | 50 | 51.89 | 49.70 | — | — | SARD benchmark |
 | SegFormer-B4 → Fast-SCNN | Full SARD | Cityscapes | 44 | 50 | 51.23 | 49.70 | — | — | SARD benchmark |
 | ResNet101–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 42 | 20 | 83.38 | 83.86 | 67.13 | 47.12 | CNN 20e `20261027T173725Z-83e7ac9f5077` |
-| ResNet34–U-Net → Fast-SCNN | BPKD body only, k=7 | Lunar | 42 | 20 | 79.02 | 79.29 | 60.27 | 38.86 | CNN 20e `20261027T212419Z-1127400db42c` |
-| ResNet34–U-Net → Fast-SCNN | BPKD edge only, k=7 | Lunar | 42 | 20 | 64.62 | 65.66 | 37.03 | 32.49 | CNN 20e `20261027T212432Z-de5a7543c1dc` |
-| ResNet34–U-Net → Fast-SCNN | BPKD full, k=7 | Lunar | 42 | 20 | 79.58 | 80.56 | 63.05 | 45.77 | CNN 20e `20261027T212115Z-f4351a1ed9ef` |
 | ResNet34–U-Net → Fast-SCNN | Full SARD | Lunar | 42 | 20 | 80.15 | 80.74 | 61.83 | 43.34 | CNN 20e `20261027T212100Z-6ca92fe48679` |
 | ResNet34–U-Net → Fast-SCNN | Uniform SARD | Lunar | 42 | 20 | 83.52 | 84.09 | 67.30 | 47.58 | CNN 20e `20261027T212405Z-c9ce3924034b` |
 | ResNet34–U-Net → Fast-SCNN | Vanilla logit KD | Lunar | 42 | 20 | 83.30 | 84.05 | 67.63 | 48.06 | CNN 20e canonical |
@@ -82,19 +78,11 @@
 | SegFormer-B4 → SegFormer-B0 | Vanilla KD + CAP | Lunar | 42 | — | — | Not located |
 | SegFormer-B4 → SegFormer-B0 | Vanilla KD, matched no-CAP control | Lunar | 42 | — | — | Not located |
 | Mask2Former Swin-L → Fast-SCNN | Vanilla KD | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Fast-SCNN | BPKD body only | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Fast-SCNN | BPKD edge only | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 3 | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 5 | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 7 | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Fast-SCNN | Full BPKD, kernel 9 | Lunar | 42 | — | — | Not located |
 | Mask2Former Swin-L → Mask2Former Swin-L | Vanilla KD | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L → Mask2Former Swin-L | Full BPKD, kernel 7 | Lunar | 42 | — | — | Not located |
 | SegFormer-B0 | Supervised baseline | Lunar | 42 | — | — | Not located |
 | SegFormer-B2 | Supervised baseline | Lunar | 42 | — | — | Not located |
 | DINOv3 ViT-L/16 | Supervised baseline | Lunar | 42 | — | — | Not located |
 | Mask2Former Swin-L | Supervised baseline | Lunar | 42 | — | — | Not located |
-| Mask2Former Swin-L | BPKD teacher/control | Lunar | 42 | — | — | Not located |
 
 | Smoke check | Dataset | Val mIoU (%) | Test mIoU (%) | Status |
 |---|---|---|---|---|
@@ -111,13 +99,11 @@
 | SARD and lunar controls | [Experiment guide](../../experiments/sard/README.md) |
 | Cityscapes SARD | [Configurations](../../experiments/sard/cityscapes/) |
 | ADE20K SARD | [Configurations](../../experiments/sard/ade20k/) |
-| BPKD | [Suite and interpretation protocol](../../experiments/bpkd/README.md) |
 | CAP and stride-4 logit sweep | `origin/feat/scalekd`, commit `be8d374`, under `experiments/cap/` and `experiments/logit_distillation/`; absent from the reviewed branch |
 
 | Method / evidence notes | Details |
 |---|---|
-| Vanilla KD, BPKD, SARD | Available on the original reviewed branch; additional ResNet-based runs were discovered on HPC |
+| Vanilla KD, SARD | Available on the original reviewed branch; additional ResNet-based runs were discovered on HPC |
 | CAP | `origin/feat/scalekd`, commit `be8d374`; feature loss added to vanilla KD |
-| Mask2Former BPKD configurations | Original README marks that suite as deferred; the verified BPKD results above use a ResNet34–U-Net teacher |
 | Smoke scope | Six SARD smoke artifacts are listed; 21 additional CNN smoke artifacts were found but are excluded from full experiment comparisons |
 | Local files | The local `results/` contains only `.gitkeep`; numeric values above were read from HPC artifacts |

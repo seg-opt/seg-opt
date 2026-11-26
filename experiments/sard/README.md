@@ -74,22 +74,17 @@ Use `dataset=lunar teacher=benchmark_resnet34_unet student=fast_scnn` with
 
 | Variant | Method and overrides |
 | --- | --- |
-| BPKD body-only, weights 20/0 | `method=bpkd distillation.edge_weight=0` |
-| BPKD edge-only, weights 0/50 | `method=bpkd distillation.body_weight=0` |
-| BPKD combined, weights 20/50, window 7 | `method=bpkd` |
 | Uniform SARD | `method=sard` with the three structure weights set to zero |
 | Full SARD | `method=sard` |
 
 Use the [managed pipeline](../README.md#managed-artifact-validation-and-historical-runs) with the CNN settings.
 Gate, hashes, and snapshot outputs: [experiment guide](../README.md).
 
-BPKD weights and SARD settings are transferred starting values from another
-dataset protocol, not tuned ResNet34 optima. SARD uses feature/distribution
+The SARD settings come from another dataset protocol. SARD uses feature/distribution
 weights 1/0.5, noise alpha 0.5, radius 7, projection width 256, denoiser
 width 128, and stride 8. Full/uniform differ only in structure weights
 (2/1/1 versus 0/0/0).
-BPKD keeps temperature 1, edge alpha 2, window 7, PRM, and POM.
-This is a five-variant single-seed pilot. Do not select
+This is a two-variant single-seed pilot. Do not select
 settings using test metrics or treat the SegFormer-B4 runs (batch 8,
 accumulation 2) as controlled CNN loss comparisons. Future 80-epoch full
 runs need matched supervised controls and a validation-based protocol. The
@@ -98,7 +93,7 @@ in the immutable run snapshots and resolved artifact configs.
 
 ## Completed CNN Pilot Results
 
-The seven student artifact sets and ResNet34 teacher passed checkpoint,
+The four student artifact sets and ResNet34 teacher passed checkpoint,
 config, split-hash, and validation-selection verification. Data metadata and
 training settings match after excluding only intended output-directory
 differences. All students have 1,135,860 parameters. Scores are percentages;
@@ -111,24 +106,19 @@ and checkpoints selected by validation mIoU. Test metrics are reporting only.
 | Vanilla KD | 83.299100 | 84.047002 | 67.634463 | 70.757794 | 48.056686 |
 | Uniform SARD | 83.520544 | 84.086227 | 67.299175 | 71.231902 | 47.583976 |
 | Full SARD | 80.147094 | 80.742520 | 61.827767 | 63.904828 | 43.336093 |
-| BPKD body-only, 20/0 | 79.015285 | 79.292935 | 60.267580 | 60.480410 | 38.863853 |
-| BPKD edge-only, 0/50 | 64.618564 | 65.664196 | 37.029469 | 31.960270 | 32.486880 |
-| BPKD combined, 20/50 | 79.583788 | 80.563778 | 63.048446 | 63.072217 | 45.773453 |
 
 Uniform SARD improves reported test mIoU by +0.771719 pp versus baseline
 and +0.039226 pp versus vanilla, a single-seed near-tie, not superiority.
 Validation mIoU is +0.221443 pp versus vanilla, while validation small-rock
 IoU is -0.260532 pp. Full SARD reduces validation mIoU by 3.373450 pp and
 test mIoU by 3.343707 pp relative to uniform; structural weighting did not
-help this pilot. All three BPKD settings regress on validation as well as
-test. These transferred, untuned weights, the feature representation, fixed
-teacher, and single student seed limit the conclusion: this is not evidence
-that either method fails in general, nor a test-selected tuning outcome.
+help this pilot. The transferred weights, feature representation, fixed
+teacher, and single student seed limit the conclusion.
 
 ### Offline Loss Audit
 
 The existing CPU audit parsed binary offline W&B histories without cloud
-sync or retraining. Each of the six distilled runs has 20 logged epoch loss
+sync or retraining. Each of the three distilled runs has 20 logged epoch loss
 records; no non-finite **logged training values** were found. Last-epoch
 mean scalar values and weighted KD/task ratios are:
 
@@ -137,14 +127,8 @@ mean scalar values and weighted KD/task ratios are:
 | Vanilla KD | 0.154614 | 0.020244 | 0.13093 |
 | Uniform SARD | 0.154179 | 0.397185 | 2.5761 |
 | Full SARD | 0.184459 | 0.628394 | 3.4067 |
-| BPKD body-only | 0.202488 | 5.059801 | 24.988 |
-| BPKD edge-only | 0.395094 | 15.238136 | 38.568 |
-| BPKD combined | 0.232292 | 22.359407 | 96.256 |
 
-Ratios use unrounded receipt values. Large BPKD scalar terms motivate
-checking normalization and calibrating weights against validation before
-seed repeats. Scalar ratios are not gradient measurements and do not prove
-the cause of regression or an implementation defect. Full SARD's epoch-0
+Ratios use unrounded receipt values. Full SARD's epoch-0
 weighted feature term is 7.345402 versus 1.051878 for uniform. Structure
 cues, weight concentration, feature normalization, and loss balance remain
 diagnostic hypotheses, not confirmed causes. Finite logged scalars do not

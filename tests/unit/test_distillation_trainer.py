@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from src.distillation.bpkd import PixelWiseKDLoss
+from src.distillation.kd import PixelWiseKDLoss
 from src.train.losses import SegmentationLoss
 from src.train.trainer import (
     BaselineModule,

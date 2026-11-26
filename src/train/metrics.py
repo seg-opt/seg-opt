@@ -4,7 +4,7 @@ from typing import Any
 import torch
 from torch import nn
 
-from src.distillation.bpkd import trimap_mask
+from src.distillation.kd import trimap_mask
 
 
 _STAGES = ("train", "val", "test")

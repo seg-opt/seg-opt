@@ -48,16 +48,16 @@ def test_submit_selects_explicit_checkpoint_operation(launcher, option, module, 
         assert arguments[arguments.index(flag) + 1] == checkpoint
 
 
-def test_bpkd_control_and_distillation_use_separate_overrides(launcher):
+def test_supervised_and_distillation_use_separate_overrides(launcher):
     control = submit_command(launcher, "--full-only", *SUPERVISED_FAST_SCNN)
     assert control.returncode == 0, control.stderr
     checkpoint = "/output/new-teacher/checkpoints/best.ckpt"
     distilled = submit_command(
-        launcher, "--full-only", "dataset=lunar", "method=bpkd", "teacher=bpkd_mask2former_swinl", "student=fast_scnn",
+        launcher, "--full-only", "dataset=lunar", "method=vanilla", "teacher=benchmark_segformer_b4", "student=fast_scnn",
         f"distillation.teacher.checkpoint_path={checkpoint}",
     )
     assert distilled.returncode == 0, distilled.stderr
     assert load_config(run_job(launcher, 101)["args"][3]).distillation is None
     distillation = load_config(run_job(launcher, 102)["args"][3]).distillation
-    assert distillation.method == "bpkd"
+    assert distillation.method == "vanilla"
     assert distillation.teacher.checkpoint_path == checkpoint

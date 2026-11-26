@@ -8,7 +8,7 @@ geometric mean (corners/junctions), and local feature dispersion (crowding).
 The paper leaves several details open; this implementation fixes them as:
 
 * Both feature maps are resized to the label grid divided by
-  ``spatial_stride`` (the same distillation grid as BPKD and vanilla KD).
+  ``spatial_stride`` (the same distillation grid as vanilla KD).
 * ``P_T`` is a frozen random orthogonal 1x1 projection.  The paper states that
   gradients flow only through the student, ``P_S`` and the denoising head, and
   a trainable ``P_T`` would let both projections collapse to zero.
@@ -37,7 +37,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from src.distillation.bpkd import DistillationLossResult, _distillation_size, valid_mask_at_size
+from src.distillation.kd import DistillationLossResult, _distillation_size, valid_mask_at_size
 
 
 class _CapturedFeatures:

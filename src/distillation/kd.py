@@ -1,4 +1,4 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import torch
@@ -15,8 +15,7 @@ class DistillationLossResult:
 
 
 _KD_COMPONENT_KEYS = (
-    "raw_body", "raw_edge", "weighted_body",
-    "weighted_edge", "raw_vanilla", "weighted_vanilla",
+    "raw_vanilla", "weighted_vanilla",
 )
 
 
@@ -34,10 +33,6 @@ class BoundaryMasks:
 
     edge: torch.Tensor
     valid: torch.Tensor
-
-    @property
-    def body(self) -> torch.Tensor:
-        return (1.0 - self.edge) * self.valid
 
 
 def _same_max_pool(inputs: torch.Tensor, kernel_size: int) -> torch.Tensor:
@@ -94,12 +89,7 @@ def boundary_masks(
     edge_kernel_size: int,
     ignore_index: int = 255,
 ) -> BoundaryMasks:
-    """Build BPKD's soft class-aware edge masks from dense ground truth.
-
-    Morphology operates at target resolution.  The binary gradient is then
-    average-pooled to the requested logit resolution, exactly preserving the
-    intended soft-mask construction when output stride is greater than one.
-    """
+    """Build soft class-aware edge masks from dense ground truth."""
     _validate_kernel_size(edge_kernel_size)
     _validate_labels(labels, num_classes=num_classes, ignore_index=ignore_index)
 
@@ -145,22 +135,6 @@ def trimap_mask(
         ignore_index=ignore_index,
     )
     return masks.edge.amax(dim=1).to(dtype=torch.bool) & masks.valid[:, 0].bool()
-
-
-def _as_alpha(
-    alpha: float | Sequence[float],
-    *,
-    num_classes: int,
-) -> tuple[float, ...]:
-    if isinstance(alpha, (int, float)):
-        values = (float(alpha),) * num_classes
-    else:
-        values = tuple(float(value) for value in alpha)
-        if len(values) != num_classes:
-            raise ValueError("edge_alpha must have one value per class")
-    if any(value < 0 for value in values):
-        raise ValueError("edge_alpha values must be non-negative")
-    return values
 
 
 def _validate_logits(
@@ -227,187 +201,6 @@ def _pixel_kl(
         teacher_probabilities
         * (teacher_log_probabilities - student_log_probabilities)
     ).sum(dim=1) * temperature**2
-
-
-def _spatial_channel_kl(
-    student_logits: torch.Tensor,
-    teacher_logits: torch.Tensor,
-    valid: torch.Tensor,
-    temperature: float,
-) -> torch.Tensor:
-    """CWD-style KL over pixels within each semantic channel."""
-    batch, channels, height, width = student_logits.shape
-    valid_positions = valid.bool().expand(-1, channels, -1, -1)
-    student = (student_logits / temperature).reshape(batch * channels, height * width)
-    teacher = (teacher_logits / temperature).reshape(batch * channels, height * width)
-    valid_positions = valid_positions.reshape(batch * channels, height * width)
-
-    active = valid_positions.any(dim=1)
-    if not active.any():
-        return student_logits.sum() * 0
-
-    student = student.masked_fill(~valid_positions, float("-inf"))
-    teacher = teacher.masked_fill(~valid_positions, float("-inf"))
-    # Avoid all--inf rows while retaining their zero contribution below.
-    inactive = ~active
-    if inactive.any():
-        student[inactive, 0] = 0
-        teacher[inactive, 0] = 0
-
-    teacher_probabilities = F.softmax(teacher, dim=1)
-    teacher_log_probabilities = F.log_softmax(teacher, dim=1)
-    student_log_probabilities = F.log_softmax(student, dim=1)
-    divergence = (
-        teacher_probabilities
-        * (teacher_log_probabilities - student_log_probabilities)
-    ).sum(dim=1)
-    return divergence[active].mean() * temperature**2
-
-
-class BPKDLoss(nn.Module):
-    """Paper-faithful body/edge KD using only final class potentials."""
-
-    def __init__(
-        self,
-        *,
-        num_classes: int,
-        body_weight: float = 20.0,
-        edge_weight: float = 50.0,
-        edge_alpha: float | Sequence[float] = 2.0,
-        edge_kernel_size: int = 7,
-        spatial_stride: int = 8,
-        body_temperature: float = 1.0,
-        edge_temperature: float = 1.0,
-        prm: bool = True,
-        pom: bool = True,
-        ignore_index: int = 255,
-    ) -> None:
-        super().__init__()
-        if num_classes <= 0:
-            raise ValueError("num_classes must be positive")
-        if body_weight < 0 or edge_weight < 0:
-            raise ValueError("distillation weights must be non-negative")
-        if body_temperature <= 0 or edge_temperature <= 0:
-            raise ValueError("distillation temperatures must be positive")
-        if spatial_stride <= 0:
-            raise ValueError("spatial_stride must be positive")
-        _validate_kernel_size(edge_kernel_size)
-        self.num_classes = num_classes
-        self.body_weight = float(body_weight)
-        self.edge_weight = float(edge_weight)
-        self.edge_kernel_size = edge_kernel_size
-        self.spatial_stride = spatial_stride
-        self.body_temperature = float(body_temperature)
-        self.edge_temperature = float(edge_temperature)
-        self.prm = prm
-        self.pom = pom
-        self.ignore_index = ignore_index
-        self.register_buffer(
-            "edge_alpha",
-            torch.tensor(_as_alpha(edge_alpha, num_classes=num_classes)),
-            persistent=False,
-        )
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self.body_weight or self.edge_weight)
-
-    def _body_loss(
-        self,
-        student_logits: torch.Tensor,
-        teacher_logits: torch.Tensor,
-        masks: BoundaryMasks,
-    ) -> torch.Tensor:
-        if not self.body_weight:
-            return student_logits.sum() * 0
-        return _spatial_channel_kl(
-            student_logits * masks.body,
-            teacher_logits * masks.body,
-            masks.valid,
-            self.body_temperature,
-        )
-
-    def _edge_loss(
-        self,
-        student_logits: torch.Tensor,
-        teacher_logits: torch.Tensor,
-        masks: BoundaryMasks,
-    ) -> torch.Tensor:
-        if not self.edge_weight:
-            return student_logits.sum() * 0
-
-        if self.prm:
-            student_logits = student_logits * masks.edge
-            teacher_logits = teacher_logits * masks.edge
-        pixel_kl = _pixel_kl(
-            student_logits,
-            teacher_logits,
-            self.edge_temperature,
-        )
-
-        if not self.pom:
-            # With POM disabled this is ordinary pixel-wise KL over the valid
-            # output grid.  When PRM is on, non-edge locations carry the
-            # identically zero-masked class potentials; keeping them in the
-            # reduction is what makes PRM and POM independently switchable.
-            support = masks.valid[:, 0]
-            count = support.sum(dim=(-2, -1))
-            values = (pixel_kl * support).sum(dim=(-2, -1))
-            per_sample = torch.where(count > 0, values / count.clamp_min(1), 0.0)
-            return per_sample.mean()
-
-        counts = (masks.edge > 0).sum(dim=(-2, -1))
-        weighted = (pixel_kl.unsqueeze(1) * masks.edge).sum(dim=(-2, -1))
-        alpha = self.edge_alpha.to(student_logits)
-        per_class = alpha * weighted / counts.clamp_min(1)
-        per_class = torch.where(counts > 0, per_class, torch.zeros_like(per_class))
-        return per_class.sum(dim=1).mean()
-
-    def forward(
-        self,
-        student_logits: torch.Tensor,
-        teacher_logits: torch.Tensor,
-        labels: torch.Tensor,
-    ) -> DistillationLossResult:
-        _validate_logits(
-            student_logits,
-            teacher_logits,
-            labels,
-            num_classes=self.num_classes,
-        )
-        _validate_labels(
-            labels,
-            num_classes=self.num_classes,
-            ignore_index=self.ignore_index,
-        )
-        if not self.enabled:
-            return _kd_result(student_logits.sum() * 0)
-        student, teacher, _ = _prepared_logits(
-            student_logits,
-            teacher_logits,
-            labels,
-            spatial_stride=self.spatial_stride,
-            ignore_index=self.ignore_index,
-        )
-        masks = boundary_masks(
-            labels,
-            num_classes=self.num_classes,
-            output_size=tuple(student.shape[-2:]),
-            edge_kernel_size=self.edge_kernel_size,
-            ignore_index=self.ignore_index,
-        )
-        raw_body = self._body_loss(student, teacher, masks)
-        raw_edge = self._edge_loss(student, teacher, masks)
-        weighted_body = raw_body * self.body_weight
-        weighted_edge = raw_edge * self.edge_weight
-        total = weighted_body + weighted_edge
-        return _kd_result(
-            total,
-            raw_body=raw_body,
-            raw_edge=raw_edge,
-            weighted_body=weighted_body,
-            weighted_edge=weighted_edge,
-        )
 
 
 class PixelWiseKDLoss(nn.Module):
