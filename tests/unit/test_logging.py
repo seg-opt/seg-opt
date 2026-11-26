@@ -2,8 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from lightning.pytorch.loggers import WandbLogger
 
-from scripts.train import _wandb_run_config, _wandb_run_name
+from scripts.train import _log_best_checkpoint, _wandb_run_config, _wandb_run_name
 from src.utils import logging as logging_utils
 
 
@@ -80,3 +81,46 @@ def test_wandb_routing_and_tags(monkeypatch, tmp_path, method):
     assert logger.call_args.kwargs["project"] == "custom-project"
     assert logger.call_args.kwargs["group"] == "custom-group"
     assert set(logger.call_args.kwargs["tags"]) == tags
+
+
+def test_wandb_logs_only_best_checkpoint(monkeypatch, tmp_path):
+    checkpoint = tmp_path / "best.ckpt"
+    checkpoint.touch()
+    (tmp_path / "epoch-004.ckpt").touch()
+    run = Mock(id="abc123", offline=False, disabled=False)
+    logger = Mock(spec=WandbLogger, experiment=run)
+    trainer = SimpleNamespace(is_global_zero=True, logger=logger)
+    artifact = Mock()
+    artifact_factory = Mock(return_value=artifact)
+    monkeypatch.setattr("wandb.Artifact", artifact_factory)
+
+    _log_best_checkpoint(trainer, checkpoint, run_kind="full")
+
+    artifact_factory.assert_called_once_with(name="checkpoints-abc123", type="model")
+    artifact.add_file.assert_called_once_with(
+        str(checkpoint), name="best.ckpt", policy="immutable", skip_cache=True
+    )
+    run.log_artifact.assert_called_once_with(artifact)
+
+
+@pytest.mark.parametrize(
+    ("run_kind", "is_global_zero", "mode"),
+    [
+        ("smoke", True, "online"),
+        ("full", False, "online"),
+        ("full", True, "offline"),
+        ("full", True, "disabled"),
+        ("full", True, "no_logger"),
+    ],
+)
+def test_wandb_skips_checkpoint_upload(monkeypatch, tmp_path, run_kind, is_global_zero, mode):
+    run = Mock(offline=mode == "offline", disabled=mode == "disabled")
+    logger = None if mode == "no_logger" else Mock(spec=WandbLogger, experiment=run)
+    trainer = SimpleNamespace(is_global_zero=is_global_zero, logger=logger)
+    artifact_factory = Mock()
+    monkeypatch.setattr("wandb.Artifact", artifact_factory)
+
+    _log_best_checkpoint(trainer, tmp_path / "best.ckpt", run_kind=run_kind)
+
+    artifact_factory.assert_not_called()
+    run.log_artifact.assert_not_called()

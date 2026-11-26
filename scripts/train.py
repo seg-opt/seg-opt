@@ -4,6 +4,7 @@ from pathlib import Path
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
 
 from scripts.evaluate import (
     PRECISION,
@@ -66,6 +67,23 @@ def _checkpoint_callback(trainer: L.Trainer) -> ModelCheckpoint:
     if len(callbacks) != 1:
         raise RuntimeError("canonical trainer must contain exactly one best-mIoU checkpoint callback")
     return callbacks[0]
+
+
+def _log_best_checkpoint(trainer: L.Trainer, checkpoint_path: Path, *, run_kind: str) -> None:
+    if run_kind != "full" or not trainer.is_global_zero:
+        return
+    logger = trainer.logger
+    if not isinstance(logger, WandbLogger):
+        return
+    run = logger.experiment
+    if run.offline or run.disabled:
+        return
+
+    import wandb
+
+    artifact = wandb.Artifact(name=f"checkpoints-{run.id}", type="model")
+    artifact.add_file(str(checkpoint_path), name="best.ckpt", policy="immutable", skip_cache=True)
+    run.log_artifact(artifact)
 
 
 def _wandb_run_name(run_config: dict) -> str:
@@ -167,6 +185,7 @@ def main() -> None:
     checkpoint_path = Path(_checkpoint_callback(trainer).best_model_path)
     if not checkpoint_path.is_file():
         raise RuntimeError("training completed without checkpoints/best.ckpt")
+    _log_best_checkpoint(trainer, checkpoint_path, run_kind=run_kind)
 
     artifact = evaluate_checkpoint(
         config,
