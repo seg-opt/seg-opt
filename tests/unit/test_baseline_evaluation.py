@@ -333,6 +333,7 @@ def test_examples_use_indexed_labels_and_upload_one_wandb_artifact(tmp_path, mon
         metadata={"source": "lusnar/examples", "sample_count": 6},
     )
     artifact.add_dir.assert_called_once_with(str(directory))
+    logger.log_image.assert_called_once()
     logger.experiment.log_artifact.assert_called_once_with(artifact)
     trainer.is_global_zero = False
     callback.on_test_start(trainer, module)
@@ -363,3 +364,40 @@ def test_examples_callback_is_removed_if_evaluation_fails(tmp_path):
             checkpoint, tmp_path, trainer=trainer,
         )
     assert trainer.callbacks == []
+
+
+def test_validation_samples_are_sorted_and_render_ignore_index_without_wandb(tmp_path):
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    labels = np.full((16, 16), 255, dtype=np.uint8)
+    frame_ids = tuple(f"frame-{number:02d}" for number in reversed(range(10)))
+    dataset = SimpleNamespace(
+        frame_ids=frame_ids,
+        pairs=list(range(10)),
+        decode_pair=lambda pair: (image, labels),
+        transform=lambda image, labels: (image, labels),
+        processor=lambda **kwargs: {"pixel_values": torch.zeros(1, 3, 16, 16)},
+        processor_kwargs={},
+    )
+    trainer = SimpleNamespace(
+        is_global_zero=True, loggers=[],
+        precision_plugin=SimpleNamespace(forward_context=nullcontext),
+    )
+
+    class Module:
+        device = "cpu"
+
+        def __call__(self, images):
+            return torch.zeros(1, 2, 16, 16)
+
+    callback = LusnarExamplesCallback(
+        None, tmp_path, ("background", "object"), 16, 16,
+        validation_dataset=dataset, checkpoint_sha256="checkpoint-hash",
+    )
+    callback.on_test_start(trainer, Module())
+    directory = tmp_path / "segmentation_samples"
+    manifest = json.loads((directory / "manifest.json").read_text())
+    assert manifest["checkpoint_sha256"] == "checkpoint-hash"
+    assert [sample["frame_id"] for sample in manifest["samples"]] == sorted(frame_ids)[:8]
+    assert len(list(directory.glob("*.png"))) == 8
+    with Image.open(directory / manifest["samples"][0]["file"]) as rendered:
+        assert rendered.getpixel((16, 24)) == (128, 128, 128)

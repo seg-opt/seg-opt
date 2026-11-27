@@ -5,7 +5,6 @@
   "output_path": "${HOME}/pl1200-01/project_data/seg-opt/results",
   "cache_path": "${HOME}/pl1200-01/project_data/containers/seg-opt/development/cache/${USER}",
   "wandb_mode": "offline",
-  "wandb_project": "seg-opt",
   "gpu": {
     "partition": "proxima",
     "constraint": "h100",

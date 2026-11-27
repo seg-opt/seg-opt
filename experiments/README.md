@@ -339,3 +339,24 @@ Stride 1 gives similar aggregate gradient directions in this sample; coarsening
 alone is not a demonstrated cause. Eval-mode final-checkpoint gradients do
 not reconstruct training dynamics or establish one cause.
 No calibration training was launched by this diagnosis.
+
+### W&B run organization
+
+Training routes each run to `seg-opt-<dataset>` and group `<dataset>_<method>`
+from the resolved Hydra config. For example, Lunar SARD runs use project
+`seg-opt-lunar` and group `lunar_sard`. Set `WANDB_PROJECT` or
+`WANDB_RUN_GROUP` to override routing. Managed submissions also accept a
+project override in the cluster profile.
+
+Run config exposes dataset, method, student, teacher, seed, and run kind.
+Tags such as `student:segformer_b2` and `method:sard` mirror these fields
+except for seed. Supervised runs omit the teacher tag. In the project UI,
+filter `run_kind=full` for comparisons. Filter by method and group by student
+to compare models, or filter by student and group by method to compare
+methods. Match seeds and, for distillation, teachers when aggregating.
+
+Completed training saves predictions from `best.ckpt` in
+`segmentation_samples/`. LUSNAR uses its existing examples manifest. Other
+datasets use up to eight validation examples sorted by frame ID. W&B shows
+the previews and provides the directory as an artifact when logging is enabled.
+`seg-opt-canonical-eval` is reserved for future canonical evaluations.

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
 
 from scripts.evaluate import (
     PRECISION,
@@ -15,7 +16,7 @@ from src.models.dinov3_mask2former import DINOv3Mask2FormerSegmenter
 from src.train.trainer import create_trainer
 from src.utils.artifacts import sha256_file
 from src.utils.logging import configure_logging
-from src.utils.utils import load_config, resolved_config
+from src.utils.utils import BaselineConfig, load_config, resolved_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,9 +69,41 @@ def _checkpoint_callback(trainer: L.Trainer) -> ModelCheckpoint:
     return callbacks[0]
 
 
-def _wandb_run_name(config_path: Path, seed: int) -> str:
-    parts = [config_path.parent.name, config_path.stem, f"seed{seed}"]
-    return "-".join(part for part in parts if part)
+def _log_best_checkpoint(trainer: L.Trainer, checkpoint_path: Path, *, run_kind: str) -> None:
+    if run_kind != "full" or not trainer.is_global_zero:
+        return
+    logger = trainer.logger
+    if not isinstance(logger, WandbLogger):
+        return
+    run = logger.experiment
+    if run.offline or run.disabled:
+        return
+
+    import wandb
+
+    artifact = wandb.Artifact(name=f"checkpoints-{run.id}", type="model")
+    artifact.add_file(str(checkpoint_path), name="best.ckpt", policy="immutable", skip_cache=True)
+    run.log_artifact(artifact)
+
+
+def _wandb_run_name(run_config: dict) -> str:
+    teacher = run_config["teacher"] or "none"
+    student = run_config["student"]
+    seed = run_config["seed"]
+    return f"teacher-{teacher}-student-{student}-seed{seed}"
+
+
+def _wandb_run_config(config: BaselineConfig, run_kind: str) -> dict:
+    distillation = config.distillation
+    teacher = load_config(distillation.teacher.config_path).model.name if distillation else None
+    return {
+        "dataset": config.data.dataset,
+        "method": distillation.method if distillation else "supervised",
+        "student": config.model.name,
+        "teacher": teacher,
+        "seed": config.training.seed,
+        "run_kind": run_kind,
+    }
 
 
 def _initialize_transfer_weights(
@@ -124,6 +157,8 @@ def main() -> None:
         len(components.test_dataset),
         components.split_manifest.sha256,
     )
+    run_kind = "smoke" if args.fast_dev_run else "full"
+    wandb_config = _wandb_run_config(config, run_kind)
     trainer = create_trainer(
         output_dir=output_dir,
         max_epochs=config.training.epochs,
@@ -135,10 +170,11 @@ def main() -> None:
         enable_nvtx_ranges=os.getenv("SEG_OPT_NVTX_RANGES") == "1",
         fast_dev_run=args.fast_dev_run,
         enable_wandb=not args.offline,
-        wandb_run_name=_wandb_run_name(args.config, config.training.seed),
+        wandb_run_name=_wandb_run_name(wandb_config),
+        wandb_config=wandb_config,
     )
     if trainer.logger is not None:
-        trainer.logger.log_hyperparams(resolved_config(config))
+        trainer.logger.log_hyperparams({**resolved_config(config), **wandb_config})
 
     log.info("Starting %s run", "smoke" if args.fast_dev_run else "full")
     trainer.fit(
@@ -149,6 +185,7 @@ def main() -> None:
     checkpoint_path = Path(_checkpoint_callback(trainer).best_model_path)
     if not checkpoint_path.is_file():
         raise RuntimeError("training completed without checkpoints/best.ckpt")
+    _log_best_checkpoint(trainer, checkpoint_path, run_kind=run_kind)
 
     artifact = evaluate_checkpoint(
         config,
@@ -156,9 +193,10 @@ def main() -> None:
         checkpoint_path,
         output_dir,
         devices=args.devices,
-        run_kind="smoke" if args.fast_dev_run else "full",
+        run_kind=run_kind,
         mask_variant=config.data.mask_variant,
         trainer=trainer,
+        include_validation_samples=True,
     )
     log.info(
         "Run complete: val mIoU=%.4f, test mIoU=%.4f, artifacts=%s",

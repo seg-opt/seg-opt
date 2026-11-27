@@ -1,7 +1,6 @@
 import colorsys
 import json
 import math
-import shutil
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -492,20 +491,65 @@ class DistillationModule(BaselineModule):
 
 
 class LusnarExamplesCallback(Callback):
-    def __init__(self, examples_dir, output_dir, class_names, height, width):
-        self.examples_dir = Path(examples_dir)
+    def __init__(
+        self, examples_dir, output_dir, class_names, height, width, *,
+        validation_dataset=None, checkpoint_sha256=None, ignore_index=255,
+    ):
+        self.examples_dir = Path(examples_dir) if examples_dir is not None else None
+        self.validation_dataset = validation_dataset
+        self.checkpoint_sha256 = checkpoint_sha256
+        self.ignore_index = ignore_index
         self.output_dir = Path(output_dir) / "segmentation_samples"
         self.class_names = tuple(class_names)
         self.transform = EvalSegmentationTransform(height=height, width=width)
         self.processor = SegmentationImageProcessor()
 
+    def _samples(self, manifest, validation_indices):
+        if self.examples_dir is not None:
+            for sample in manifest["samples"]:
+                files = {Path(item["path"]).name: self.examples_dir / item["path"]
+                         for item in sample["files"]}
+                image, labels = _decode_lusnar_pair((files["rgb.png"], files["label.png"]))
+                image, labels = self.transform(image, labels)
+                pixels = self.processor(images=[image], return_tensors="pt")["pixel_values"]
+                yield image, labels, pixels
+            return
+
+        dataset = self.validation_dataset
+        for index in validation_indices:
+            image, labels = dataset.decode_pair(dataset.pairs[index])
+            image, labels = dataset.transform(image, labels)
+            pixels = dataset.processor(
+                images=[image], return_tensors="pt", **dataset.processor_kwargs,
+            )["pixel_values"]
+            yield image, labels, pixels
+
     def on_test_start(self, trainer, pl_module):
         if not trainer.is_global_zero:
             return
-        manifest_path = self.examples_dir / "manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        validation_indices = []
+        if self.examples_dir is not None:
+            source = "lusnar/examples"
+            manifest_bytes = (self.examples_dir / "manifest.json").read_bytes()
+            manifest = json.loads(manifest_bytes)
+            filenames = [
+                f"{sample['scene']}_{sample['timestamp']}.png" for sample in manifest["samples"]
+            ]
+        else:
+            source = "validation"
+            frame_ids = self.validation_dataset.frame_ids
+            validation_indices = sorted(range(len(frame_ids)), key=frame_ids.__getitem__)[:8]
+            filenames = [f"sample-{number:02d}.png" for number in range(len(validation_indices))]
+            manifest = {"source": source, "samples": [
+                {"frame_id": frame_ids[index], "file": filename}
+                for index, filename in zip(validation_indices, filenames)
+            ]}
         self.output_dir.mkdir(parents=True, exist_ok=False)
-        shutil.copy2(manifest_path, self.output_dir / "manifest.json")
+        if self.checkpoint_sha256 is not None:
+            manifest["checkpoint_sha256"] = self.checkpoint_sha256
+        if self.examples_dir is None or self.checkpoint_sha256 is not None:
+            manifest_bytes = (json.dumps(manifest, indent=2) + "\n").encode()
+        (self.output_dir / "manifest.json").write_bytes(manifest_bytes)
         palette = np.array([
             [round(channel * 255) for channel in colorsys.hsv_to_rgb(
                 index / len(self.class_names), 0.75, 0.95
@@ -513,42 +557,53 @@ class LusnarExamplesCallback(Callback):
             for index in range(len(self.class_names))
         ], dtype=np.uint8)
         with torch.inference_mode(), trainer.precision_plugin.forward_context():
-            for sample in manifest["samples"]:
-                files = {Path(item["path"]).name: self.examples_dir / item["path"]
-                         for item in sample["files"]}
-                image, labels = _decode_lusnar_pair((files["rgb.png"], files["label.png"]))
-                image, labels = self.transform(image, labels)
-                pixels = self.processor(images=[image], return_tensors="pt")["pixel_values"]
+            for filename, (image, labels, pixels) in zip(filenames, self._samples(manifest, validation_indices), strict=True):
                 predictions = pl_module(pixels.to(pl_module.device)).argmax(dim=1)[0]
                 prediction = predictions.cpu().numpy()
+                ignored = labels == self.ignore_index
+                label_rgb = palette[np.where(ignored, 0, labels)]
+                label_rgb[ignored] = (128, 128, 128)
                 height, width = labels.shape
+                legend = list(zip(self.class_names, palette))
+                if ignored.any():
+                    legend.append(("Ignored", (128, 128, 128)))
                 canvas = Image.new(
-                    "RGB", (max(3 * width, 300), height + 30 + 18 * len(self.class_names)), "white"
+                    "RGB", (max(3 * width, 300), height + 30 + 18 * len(legend)), "white"
                 )
                 draw = ImageDraw.Draw(canvas)
                 for column, (title, panel) in enumerate((
-                    ("Input", image), ("Ground truth", palette[labels]),
+                    ("Input", image), ("Ground truth", label_rgb),
                     ("Prediction", palette[prediction]),
                 )):
                     canvas.paste(Image.fromarray(panel), (column * width, 24))
                     draw.text((column * width + 2, 4), title, fill="black")
-                for index, name in enumerate(self.class_names):
+                for index, (name, rgb) in enumerate(legend):
                     y = height + 30 + index * 18
-                    color = tuple(int(value) for value in palette[index])
+                    color = tuple(int(value) for value in rgb)
                     draw.rectangle((4, y, 16, y + 12), fill=color)
                     draw.text((22, y), name, fill="black")
-                canvas.save(self.output_dir / f"{sample['scene']}_{sample['timestamp']}.png")
+                canvas.save(self.output_dir / filename)
         for logger in trainer.loggers:
             if isinstance(logger, WandbLogger):
                 import wandb
 
                 run = logger.experiment
+                artifact_prefix = "lusnar-examples" if self.examples_dir else "segmentation-samples"
                 artifact = wandb.Artifact(
-                    name=f"lusnar-examples-{run.id}", type="evaluation",
-                    metadata={"source": "lusnar/examples", "sample_count": len(manifest["samples"])},
+                    name=f"{artifact_prefix}-{run.id}", type="evaluation",
+                    metadata={"source": source, "sample_count": len(filenames)},
                 )
                 artifact.add_dir(str(self.output_dir))
                 run.log_artifact(artifact)
+                if filenames:
+                    logger.log_image(
+                        key="segmentation_samples",
+                        images=[str(self.output_dir / filename) for filename in filenames],
+                        caption=[
+                            sample.get("frame_id", filename)
+                            for sample, filename in zip(manifest["samples"], filenames)
+                        ],
+                    )
 
 
 def create_trainer(
@@ -566,6 +621,7 @@ def create_trainer(
     fast_dev_run: bool = False,
     enable_wandb: bool = True,
     wandb_run_name: str | None = None,
+    wandb_config: dict | None = None,
 ) -> L.Trainer:
     """``fast_dev_run`` is a checkpoint-preserving one-batch smoke mode rather
     than Lightning's built-in mode, which disables checkpoint callbacks.
@@ -611,7 +667,7 @@ def create_trainer(
         log_every_n_steps=log_every_n_steps,
         callbacks=callbacks,
         logger=(
-            make_wandb_logger(output_dir, run_name=wandb_run_name)
+            make_wandb_logger(output_dir, run_name=wandb_run_name, run_config=wandb_config)
             if enable_wandb
             else False
         ),

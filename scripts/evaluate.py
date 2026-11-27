@@ -166,6 +166,7 @@ def evaluate_checkpoint(
     run_kind: str = "full",
     mask_variant: MaskVariant | None = None,
     trainer: L.Trainer | None = None,
+    include_validation_samples: bool = False,
 ) -> dict[str, Any]:
     """Restore one checkpoint, run validation/test, and write metrics.json."""
     checkpoint_path = Path(checkpoint_path).resolve()
@@ -199,10 +200,15 @@ def evaluate_checkpoint(
     )
     validation = components.module.latest_metrics("val")
     examples_callback = None
-    if config.data.dataset == "lusnar":
+    checkpoint_sha256 = sha256_file(checkpoint_path)
+    is_lusnar = config.data.dataset == "lusnar"
+    if is_lusnar or include_validation_samples:
         examples_callback = LusnarExamplesCallback(
-            Path(config.data.dataset_root) / "examples", output_dir,
-            config.data.class_names, config.data.image_height, config.data.image_width,
+            Path(config.data.dataset_root) / "examples" if is_lusnar else None,
+            output_dir, config.data.class_names, config.data.image_height, config.data.image_width,
+            validation_dataset=None if is_lusnar else components.validation_dataset,
+            checkpoint_sha256=checkpoint_sha256,
+            ignore_index=config.loss.ignore_index,
         )
         trainer.callbacks.append(examples_callback)
     try:
@@ -249,7 +255,7 @@ def evaluate_checkpoint(
             config.data.class_names,
             trimap_kernel_size=config.metrics.trimap_kernel_size,
         ),
-        "checkpoint_sha256": sha256_file(checkpoint_path),
+        "checkpoint_sha256": checkpoint_sha256,
         "config_sha256": sha256_file(config_path) if config_path.is_file() else None,
     }
     distillation = _distillation_artifact(config)

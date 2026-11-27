@@ -67,7 +67,9 @@ batch_header() {
     local mode=$1 project=$2 group=$3
     printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'export REPO_PATH="$PWD"'
     printf 'export WANDB_MODE=%q SINGULARITYENV_WANDB_MODE=%q APPTAINERENV_WANDB_MODE=%q\n' "$mode" "$mode" "$mode"
-    printf 'export WANDB_PROJECT=%q SINGULARITYENV_WANDB_PROJECT=%q APPTAINERENV_WANDB_PROJECT=%q\n' "$project" "$project" "$project"
+    if [[ -n $project ]]; then
+        printf 'export WANDB_PROJECT=%q SINGULARITYENV_WANDB_PROJECT=%q APPTAINERENV_WANDB_PROJECT=%q\n' "$project" "$project" "$project"
+    fi
     if [[ -n $group ]]; then
         printf 'export WANDB_RUN_GROUP=%q SINGULARITYENV_WANDB_RUN_GROUP=%q APPTAINERENV_WANDB_RUN_GROUP=%q\n' "$group" "$group" "$group"
     fi
@@ -104,7 +106,7 @@ queue() {
 single_batch() {
     local mode=$1 output=$2 module=$3
     shift 3
-    batch_header "$mode" "${WANDB_PROJECT:-seg-opt}" "${WANDB_RUN_GROUP:-}"
+    batch_header "$mode" "${WANDB_PROJECT:-}" "${WANDB_RUN_GROUP:-}"
     batch_command "$module" "$config" "$output" "$@"
 }
 

@@ -36,15 +36,29 @@ def configure_logging(output_dir: str | Path, verbose: bool = False) -> logging.
 def make_wandb_logger(
     output_dir: str | Path,
     run_name: str | None = None,
+    run_config: dict | None = None,
 ) -> WandbLogger:
     output_dir = Path(output_dir)
     wandb_dir = output_dir / "wandb"
     wandb_dir.mkdir(parents=True, exist_ok=True)
     base_name = run_name or output_dir.name
     execution_id = os.getenv("SLURM_JOB_ID", f"local-{os.getpid()}")
+    project = os.getenv("WANDB_PROJECT") or "seg-opt"
+    run_options = {}
+    if run_config is not None:
+        dataset = run_config["dataset"]
+        method = run_config["method"]
+        project = os.getenv("WANDB_PROJECT") or f"seg-opt-{dataset}"
+        run_options["group"] = os.getenv("WANDB_RUN_GROUP") or f"{dataset}_{method}"
+        run_options["tags"] = [
+            f"{key}:{run_config[key]}"
+            for key in ("dataset", "method", "student", "teacher", "run_kind")
+            if run_config[key] is not None
+        ]
     return WandbLogger(
-        project=os.getenv("WANDB_PROJECT", "seg-opt"),
+        project=project,
         name=f"{base_name}-{execution_id}",
         save_dir=wandb_dir,
         log_model=False,
+        **run_options,
     )

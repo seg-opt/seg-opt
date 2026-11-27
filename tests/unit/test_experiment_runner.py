@@ -817,3 +817,21 @@ class ExperimentRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_job_environment_exports_only_configured_wandb_project():
+    profile = {
+        "image_path": "/image", "data_path": "/data", "output_path": "/output",
+        "cache_path": "/cache", "wandb_mode": "online",
+    }
+    manifest = {"profile": profile, "snapshot": "/snapshot"}
+    for mode in ("offline", "online", "disabled"):
+        environment = experiment.job_environment(manifest, {"wandb_mode": mode})
+        for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+            assert prefix + "WANDB_PROJECT" not in environment
+            assert environment[prefix + "WANDB_MODE"] == mode
+
+    profile["wandb_project"] = "custom-project"
+    environment = experiment.job_environment(manifest, {})
+    for prefix in ("", "SINGULARITYENV_", "APPTAINERENV_"):
+        assert environment[prefix + "WANDB_PROJECT"] == "custom-project"
