@@ -1,0 +1,6 @@
+# @package distillation
+
+method: vanilla
+spatial_stride: 8
+vanilla_weight: 1.0
+vanilla_temperature: 1.0

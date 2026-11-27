@@ -1,0 +1,16 @@
+# @package _global_
+
+distillation:
+  teacher:
+    checkpoint_path: results/baselines_benchmark/segformer_b4/seed42/checkpoints/best.ckpt
+    config_path: teacher_config.yaml
+_teacher_overrides:
+  - dataset=lunar
+  - method=supervised
+  - teacher=none
+  - student=segformer_b4
+  - training.output_dir=results/baselines_benchmark/segformer_b4/seed42
+  - training.batch_size=2
+  - training.accumulate_grad_batches=8
+  - training.learning_rate=0.0003
+  - training.backbone_learning_rate=3e-05

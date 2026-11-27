@@ -12,11 +12,11 @@ uv run python -m pytest tests/unit -v
 
 ## Integration tests
 
-The cluster tests use the credentials in your `.env.test` (by default) and run their remote commands **inside the service directory** named by `SERVICE_ID` (a folder in the cluster home, e.g. `~/pl1234-01`). The data pipeline integration test uses the dataset configured in `experiments/baselines_benchmark/resnet34_unet.yaml`.
+The cluster tests use the credentials in your `.env.test` (by default) and run their remote commands **inside the service directory** named by `SERVICE_ID` (a folder in the cluster home, e.g. `~/pl1234-01`). The data pipeline integration test uses the Lunar dataset with the `resnet34_unet` model preset.
 
 ### Prerequisites
 
-- The lunar dataset at the path configured in `experiments/baselines_benchmark/resnet34_unet.yaml` for the data pipeline test.
+- The Lunar dataset at the path configured by the `lunar` dataset preset.
 - A configured `.env.test` (copy `.env.example` to `.env.test` and fill it in, including `SERVICE_ID`). If it is missing or incomplete, the tests **skip** rather than fail.
 - The OpenSSH client (`ssh`) on your PATH.
 
@@ -86,13 +86,9 @@ sha256sum --check seg-opt-development-<VERSION>.sif.sha256
 An H100 check consumes a real allocation and is run only after OCI/SIF checks pass. Mount the current source and a small dataset fixture, then submit one batch:
 
 ```bash
-sbatch --account=<SERVICE_ID> \
-  --export=ALL,IMAGE_PATH,DATA_PATH,REPO_PATH \
-  scripts/train.sbatch \
-  python -m scripts.train \
-  --config experiments/baselines_benchmark/fast_scnn.yaml \
-  --devices 1 \
-  --fast-dev-run
+scripts/submit --smoke-only dataset=lunar method=supervised teacher=none student=fast_scnn \
+  training.batch_size=16 training.accumulate_grad_batches=1 training.learning_rate=0.0005 \
+  training.backbone_learning_rate=null
 ```
 
 Record the SIF checksum, dependency lock checksum, source commit, dataset version, command, SLURM job ID, GPU/driver, and output path.

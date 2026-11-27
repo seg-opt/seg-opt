@@ -1,0 +1,34 @@
+# @package data
+
+dataset: cityscapes
+dataset_root: ../../datasets/cityscapes
+split_manifest: experiments/sard/cityscapes/split_seed42.json
+class_names:
+- road
+- sidewalk
+- building
+- wall
+- fence
+- pole
+- traffic_light
+- traffic_sign
+- vegetation
+- terrain
+- sky
+- person
+- rider
+- car
+- truck
+- bus
+- train
+- motorcycle
+- bicycle
+image_height: 512
+image_width: 1024
+num_workers: 8
+augmentation:
+  flip_probability: 0.5
+  brightness: 0.15
+  contrast: 0.15
+  gamma_min: 0.85
+  gamma_max: 1.15

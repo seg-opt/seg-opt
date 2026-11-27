@@ -3,7 +3,7 @@
 This experiment tests whether a DINOv3+Mask2Former teacher improves two students
 compared with SegFormer-B4 teacher runs. The historical 80-epoch teacher reached
 test mIoU 0.9052 and small-rock IoU 0.7821; those measurements belong to that
-historical run, not verified evidence for the current recipe.
+historical run, not verified evidence for the current teacher.
 
 The two runs isolate logit distillation with the same strong teacher. Both
 students and the teacher now use the standard 80-epoch full-run budget:
@@ -18,9 +18,16 @@ converted to log-potentials before KD. No feature distillation is enabled. The
 task-only controls can be reused only when their verified artifacts match the
 80-epoch budget and remaining protocol.
 
-The legacy `submit.sh` schedules student smoke/full arrays only; it does not
-train a teacher. Before submitting students, train from the current 80-epoch
-teacher config or adopt a teacher only after full protocol/artifact verification.
+Train a teacher with:
+
+```bash
+scripts/submit dataset=lunar method=supervised teacher=none student=dinov3_vitl16_mask2former \
+  training.batch_size=1 training.accumulate_grad_batches=16 training.learning_rate=0.0001 \
+  training.backbone_learning_rate=null
+```
+
+Before submitting students, train with the current 80-epoch protocol or
+adopt a teacher after verifying its protocol and artifacts.
 Its standalone checkpoint reference is
 `results/strong_teacher_distillation/teacher_dinov3_mask2former/seed42/checkpoints/best.ckpt`,
 not the historical `lunar_teacher_80e` artifact. Its full protocol
@@ -36,8 +43,11 @@ Only after the standalone teacher reference is prepared, the legacy student
 smoke-gated sequence is available with:
 
 ```bash
-bash experiments/strong_teacher_distillation/submit.sh
+scripts/submit dataset=lunar method=vanilla teacher=strong_dinov3_mask2former student=segformer_b0
+scripts/submit --after-job "$FIRST_TRAIN_JOB_ID" dataset=lunar method=vanilla \
+  teacher=strong_dinov3_mask2former student=fast_scnn training.learning_rate=0.0005 \
+  training.backbone_learning_rate=null
 ```
 
-Only one strong-teacher job runs at a time to expose memory issues clearly
-during the smoke array.
+Submit the second command with the first run's printed training job ID to
+run the students serially.

@@ -1,79 +1,63 @@
-from pathlib import Path
-import re
-import unittest
+import json
+
+import pytest
+
+from src.utils.utils import load_config
+from tests.unit.test_submit_hydra import launcher, run_job, submit_command
 
 
-REPOSITORY = Path(__file__).resolve().parents[2]
-DISTILLATION = "experiments/logit_distillation"
-BASELINES = "experiments/baselines_benchmark"
-DEFAULT_CONFIG = f"{DISTILLATION}/fast_scnn_from_segformer_b4.yaml"
-B0_CONFIG = f"{DISTILLATION}/segformer_b0_from_segformer_b4.yaml"
-BPKD = "experiments/bpkd"
-BASELINE_CONFIGS = [f"{BASELINES}/{name}.yaml" for name in (
-    "fast_scnn", "resnet34_unet", "segformer_b0", "segformer_b2",
-    "segformer_b4", "dinov3_vitl16", "mask2former_swinl",
-)]
-BPKD_CONFIGS = [f"{BPKD}/fast_scnn_{name}_clean.yaml" for name in (
-    "task_only", "vanilla", "body_only", "edge_only", "bpkd_w3",
-    "bpkd_w5", "bpkd_w7", "bpkd_w9",
-)]
-WRAPPERS = {
-    f"{DISTILLATION}/submit.sh": [DEFAULT_CONFIG],
-    f"{DISTILLATION}/segformer_b0_from_segformer_b4_submit.sh": [B0_CONFIG],
-    f"{DISTILLATION}/train.sbatch": [DEFAULT_CONFIG],
-    f"{DISTILLATION}/smoke.sbatch": [DEFAULT_CONFIG],
-    f"{DISTILLATION}/segformer_b0_from_segformer_b4_train.sbatch": [B0_CONFIG],
-    f"{DISTILLATION}/segformer_b0_from_segformer_b4_smoke.sbatch": [B0_CONFIG],
-    f"{BASELINES}/train.sbatch": BASELINE_CONFIGS,
-    f"{BASELINES}/smoke.sbatch": [f"{BASELINES}/fast_scnn.yaml"],
-    f"{BPKD}/train.sbatch": BPKD_CONFIGS,
-    f"{BPKD}/train_mask2former_screen.sbatch": [
-        f"{BPKD}/mask2former_vanilla_clean.yaml", f"{BPKD}/mask2former_bpkd_w7_clean.yaml",
+SUPERVISED_FAST_SCNN = ("dataset=lunar", "method=supervised", "teacher=none", "student=fast_scnn")
+
+
+def test_default_output_is_checkout_results(launcher):
+    repo, _, _, env = launcher
+    env.pop("OUTPUT_PATH")
+    result = submit_command(launcher, "--smoke-only", *SUPERVISED_FAST_SCNN)
+    assert result.returncode == 0, result.stderr
+    run, = (repo / "results/experiments").iterdir()
+    assert f"Results: {run}" in result.stdout
+
+
+def test_external_dependency_gates_smoke_and_training(launcher):
+    result = submit_command(launcher, "--after-job", "19", *SUPERVISED_FAST_SCNN)
+    assert result.returncode == 0, result.stderr
+    trace = launcher[2]
+    assert "--dependency=afterok:19" in json.loads((trace / "101.json").read_text())
+    assert "--dependency=afterok:101" in json.loads((trace / "102.json").read_text())
+
+
+@pytest.mark.parametrize(
+    ("option", "module", "flag", "dataset"),
+    [
+        ("--evaluate", "scripts.evaluate", "--checkpoint", "lusnar"),
+        ("--init-checkpoint", "scripts.train", "--init-checkpoint", "lunar"),
     ],
-}
+)
+def test_submit_selects_explicit_checkpoint_operation(launcher, option, module, flag, dataset):
+    checkpoint = "/output/teacher.ckpt"
+    result = submit_command(
+        launcher, option, checkpoint, f"dataset={dataset}", "method=supervised",
+        "teacher=none", "student=dinov3_vitl16_mask2former",
+    )
+    assert result.returncode == 0, result.stderr
+    jobs = sorted(launcher[2].glob("*.sbatch"))
+    assert len(jobs) == (1 if module == "scripts.evaluate" else 2)
+    for job in jobs:
+        arguments = run_job(launcher, int(job.stem))["args"]
+        assert arguments[:2] == ["-m", module]
+        assert arguments[arguments.index(flag) + 1] == checkpoint
 
 
-class ExperimentSubmissionTests(unittest.TestCase):
-    def test_family_launchers_keep_configs_and_wandb_defaults(self):
-        defaults = {
-            f"{DISTILLATION}/train.sbatch": (
-                "seg-opt-logit-distillation", "segformer-b4-to-fastscnn-clean-seed42"),
-            f"{BASELINES}/train.sbatch": ("seg-opt-clean-benchmarks", "clean-aligned-seed42"),
-            f"{BPKD}/train.sbatch": ("seg-opt-bpkd", "mask2former-to-fastscnn-clean-seed42"),
-            f"{BPKD}/train_mask2former_screen.sbatch": (
-                "seg-opt-bpkd", "mask2former-born-again-clean-seed42"),
-            f"{DISTILLATION}/segformer_b0_from_segformer_b4_train.sbatch": (
-                "seg-opt-logit-distillation", "segformer-b4-to-segformer-b0-clean-seed42"),
-        }
-        for relative, configs in WRAPPERS.items():
-            with self.subTest(script=relative):
-                text = (REPOSITORY / relative).read_text(encoding="utf-8")
-                self.assertNotIn("experiment.py", text)
-                if relative.endswith("submit.sh"):
-                    scripts = re.findall(r'"\$experiment_dir/([^\"]+\.sbatch)"', text)
-                    prefix = Path(relative).name.removesuffix("submit.sh")
-                    self.assertEqual(scripts, [prefix + "smoke.sbatch", prefix + "train.sbatch"])
-                    self.assertEqual(text.count("sbatch --parsable"), 2)
-                    self.assertIn('--dependency="afterok:${smoke_job}"', text)
-                    text = "\n".join((REPOSITORY / relative).with_name(name).read_text()
-                                     for name in scripts)
-                else:
-                    self.assertIn("exec bash scripts/train.sbatch", text)
-                    self.assertIn("#SBATCH --account=pl1200-01", text)
-                    self.assertIn("#SBATCH --partition=proxima", text)
-                    self.assertIn("#SBATCH --gpus-per-node=1", text)
-                    if len(configs) > 1:
-                        self.assertIn(f"#SBATCH --array=0-{len(configs) - 1}%1", text)
-                    mode = "offline" if relative.endswith("smoke.sbatch") else "online"
-                    self.assertIn(f'export WANDB_MODE="{mode}"', text)
-                    self.assertEqual("--fast-dev-run" in text, mode == "offline")
-                self.assertEqual(list(dict.fromkeys(re.findall(r"experiments/[\w/]+\.yaml", text))),
-                                 configs)
-                expected = defaults.get(relative.replace("submit.sh", "train.sbatch"))
-                for name, value in zip(("PROJECT", "RUN_GROUP"), expected or (None, None), strict=True):
-                    matches = re.findall(rf'export WANDB_{name}="\$\{{WANDB_{name}:-([^}}]+)\}}"', text)
-                    self.assertEqual(matches, [value] if value else [])
-
-
-if __name__ == "__main__":
-    unittest.main()
+def test_bpkd_control_and_distillation_use_separate_overrides(launcher):
+    control = submit_command(launcher, "--full-only", *SUPERVISED_FAST_SCNN)
+    assert control.returncode == 0, control.stderr
+    checkpoint = "/output/new-teacher/checkpoints/best.ckpt"
+    distilled = submit_command(
+        launcher, "--full-only", "dataset=lunar", "method=bpkd", "teacher=bpkd_mask2former_swinl", "student=fast_scnn",
+        f"distillation.teacher.checkpoint_path={checkpoint}",
+    )
+    assert distilled.returncode == 0, distilled.stderr
+    assert load_config(run_job(launcher, 101)["args"][3]).distillation is None
+    distillation = load_config(run_job(launcher, 102)["args"][3]).distillation
+    assert distillation.method == "bpkd"
+    assert distillation.teacher.checkpoint_path == checkpoint

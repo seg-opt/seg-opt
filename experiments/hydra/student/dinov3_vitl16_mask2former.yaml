@@ -1,0 +1,7 @@
+# @package model
+
+name: dinov3_vitl16_mask2former
+model_id: facebook/dinov3-vitl16-pretrain-lvd1689m
+decoder_model_id: facebook/mask2former-swin-large-ade-semantic
+pretrained: true
+freeze_backbone: true

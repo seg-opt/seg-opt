@@ -1,0 +1,13 @@
+# @package distillation
+
+method: sard
+spatial_stride: 8
+sard_feature_weight: 1.0
+sard_distribution_weight: 0.5
+sard_edge_weight: 2.0
+sard_corner_weight: 1.0
+sard_density_weight: 1.0
+sard_density_radius: 7
+sard_noise_alpha: 0.5
+sard_projection_channels: 256
+sard_denoiser_hidden_channels: 128

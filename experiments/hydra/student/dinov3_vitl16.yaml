@@ -1,0 +1,6 @@
+# @package model
+
+name: dinov3_vitl16
+model_id: facebook/dinov3-vitl16-pretrain-lvd1689m
+pretrained: true
+freeze_backbone: true

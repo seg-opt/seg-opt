@@ -230,13 +230,13 @@ def submit(args):
         for definition in stages.values():
             if definition["kind"] == "gpu":
                 definition["seed"] = seed
-    stages["summary"] = stage(needs=list(stages), kind="cpu")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
     run = Path(profile["output_path"]) / "experiments" / run_id
     run.mkdir(parents=True, exist_ok=False)
     (run / "logs").mkdir()
     (run / "artifacts").mkdir()
     hashes = snapshot(root, run / "source")
+    stages["summary"] = stage(needs=list(stages), kind="cpu")
     manifest = {"schema_version": 1, "id": run_id, "run": str(run), "snapshot": str(run / "source"),
                 "profile": profile, "source_hashes": hashes,
                 "image": {"path": profile["image_path"], "sha256": sha256(profile["image_path"])},
@@ -267,18 +267,19 @@ def execute(command, **kwargs):
     return subprocess.run(command, check=True, text=True, capture_output=True, **kwargs)
 
 
-def job_environment(manifest):
+def job_environment(manifest, definition):
     profile = manifest["profile"]
     environment = os.environ.copy()
     for key in ("PYTHONPATH", "PYTHONHOME"):
         environment.pop(key, None)
     environment.update({key.upper(): str(profile[key]) for key in
-                        ("image_path", "data_path", "output_path", "cache_path", "wandb_mode", "wandb_project")})
+                        ("image_path", "data_path", "output_path", "cache_path", "wandb_project")})
     environment.update(REPO_PATH=manifest["snapshot"], SLURM_SUBMIT_DIR=manifest["snapshot"])
+    environment["WANDB_MODE"] = definition.get("wandb_mode", profile["wandb_mode"])
     for prefix in ("SINGULARITYENV_", "APPTAINERENV_"):
         environment[prefix + "PYTHONPATH"] = "/workspace"
         environment[prefix + "PYTHONHOME"] = ""
-        environment[prefix + "WANDB_MODE"] = profile["wandb_mode"]
+        environment[prefix + "WANDB_MODE"] = environment["WANDB_MODE"]
         environment[prefix + "WANDB_PROJECT"] = profile["wandb_project"]
     return environment
 
@@ -321,7 +322,7 @@ def schedule(manifest, selected):
                 command.append(f"--dependency={condition}:{':'.join(dependencies)}")
             command += [str(Path(manifest["snapshot"]) / "scripts/experiment.sbatch"),
                         str(run / "manifest.json"), f"{name}/{directory.name}"]
-            result = execute(command, env=job_environment(manifest))
+            result = execute(command, env=job_environment(manifest, definition))
             job_id = result.stdout.strip().split(";")[0]
             if not re.fullmatch(r"[1-9][0-9]*", job_id):
                 raise RuntimeError(f"sbatch returned invalid job ID: {result.stdout!r}")
@@ -610,7 +611,8 @@ def worker(args):
             command = ["bash", str(Path(manifest["snapshot"]) / "scripts/train.sbatch"),
                        "python", "-m", "scripts.experiment", "worker",
                        container_path(manifest, args.manifest), args.stage, "--container"]
-            subprocess.run(command, check=True, env=job_environment(manifest), cwd=manifest["snapshot"])
+            subprocess.run(command, check=True, env=job_environment(manifest, definition),
+                           cwd=manifest["snapshot"])
         elif name == "gate":
             teacher = manifest["artifacts"].get("teacher") or stage_artifact(manifest, "teacher")
             atomic_json(directory / "gate.json", validate_gate(manifest["artifacts"]["baseline"], teacher))

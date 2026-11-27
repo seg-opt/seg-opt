@@ -1,0 +1,14 @@
+# @package _global_
+
+distillation:
+  teacher:
+    checkpoint_path: results/baselines_benchmark/resnet101_unet/seed42/checkpoints/best.ckpt
+    config_path: teacher_config.yaml
+_teacher_overrides:
+  - dataset=lunar
+  - method=supervised
+  - teacher=none
+  - student=resnet101_unet
+  - training.output_dir=results/baselines_benchmark/resnet101_unet/seed42
+  - training.learning_rate=0.0003
+  - training.backbone_learning_rate=3e-05

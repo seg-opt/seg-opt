@@ -10,8 +10,10 @@ from scripts.evaluate import (
     evaluate_checkpoint,
     prepare_artifact_directory,
 )
-from src.baselines import build_baseline
+from src.baselines import _teacher_model_state, build_baseline
+from src.models.dinov3_mask2former import DINOv3Mask2FormerSegmenter
 from src.train.trainer import create_trainer
+from src.utils.artifacts import sha256_file
 from src.utils.logging import configure_logging
 from src.utils.utils import load_config, resolved_config
 
@@ -28,6 +30,11 @@ def parse_args() -> argparse.Namespace:
         help="run one batch per stage while retaining and restoring best.ckpt",
     )
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--init-checkpoint",
+        type=Path,
+        help="initialize DINOv3 Mask2Former weights for a new label set",
+    )
     parser.add_argument(
         "--max-steps",
         type=int,
@@ -66,11 +73,31 @@ def _wandb_run_name(config_path: Path, seed: int) -> str:
     return "-".join(part for part in parts if part)
 
 
+def _initialize_transfer_weights(
+    model: DINOv3Mask2FormerSegmenter, checkpoint_path: Path
+) -> None:
+    state = _teacher_model_state(checkpoint_path)
+    target_state = model.state_dict()
+    for key in (
+        "model.class_predictor.weight",
+        "model.class_predictor.bias",
+        "model.criterion.empty_weight",
+    ):
+        if key not in state:
+            raise ValueError(f"initialization checkpoint is missing {key}")
+        state[key] = target_state[key]
+    model.load_state_dict(state, strict=True)
+
+
 def main() -> None:
     args = parse_args()
     if args.max_steps is not None and args.max_steps <= 0:
         raise ValueError("--max-steps must be positive")
     config = load_config(args.config)
+    if args.init_checkpoint is not None and (
+        config.model.name != "dinov3_vitl16_mask2former" or config.distillation is not None
+    ):
+        raise ValueError("--init-checkpoint requires supervised DINOv3 Mask2Former")
     output_dir = _output_directory(
         args,
         config.model.name,
@@ -82,6 +109,14 @@ def main() -> None:
 
     log.info("Loading canonical baseline %s", config.model.name)
     components = build_baseline(config)
+    if args.init_checkpoint is not None:
+        checkpoint_path = args.init_checkpoint.resolve(strict=True)
+        _initialize_transfer_weights(components.model, checkpoint_path)
+        log.info(
+            "Initialized transfer weights from %s (sha256=%s)",
+            checkpoint_path,
+            sha256_file(checkpoint_path),
+        )
     log.info(
         "Dataset sizes: train=%d validation=%d test=%d; split=%s",
         len(components.train_dataset),

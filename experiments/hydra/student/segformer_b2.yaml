@@ -1,0 +1,4 @@
+# @package model
+
+name: segformer_b2
+model_id: nvidia/mit-b2

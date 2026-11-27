@@ -1,0 +1,16 @@
+# @package _global_
+
+distillation:
+  teacher:
+    checkpoint_path: results/bpkd/teachers/mask2former_swinl_clean/seed42/checkpoints/best.ckpt
+    config_path: teacher_config.yaml
+_teacher_overrides:
+  - dataset=lunar
+  - method=supervised
+  - teacher=none
+  - student=mask2former_swinl
+  - training.output_dir=results/bpkd/teachers/mask2former_swinl_clean/seed42
+  - training.batch_size=1
+  - training.accumulate_grad_batches=16
+  - training.learning_rate=0.0001
+  - training.backbone_learning_rate=1e-05

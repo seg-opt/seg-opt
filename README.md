@@ -17,23 +17,26 @@ PCSS integration tests are skipped unless `.env.test` is configured.
 
 The active experiment compares Fast-SCNN with ResNet34–U-Net, SegFormer
 B0/B2/B4, a frozen DINOv3 ViT-L/16 probe, and Mask2Former Swin-L on clean masks
-and the aligned seed-42 split. Its configurations, smoke job, full array, and
+and the aligned seed-42 split. Its presets, submit commands, and
 selection protocol are in `experiments/baselines_benchmark/`. See
 [`experiments/README.md`](experiments/README.md) for the complete experiment map.
 
 Run a checkpoint-preserving local smoke test with:
 
 ```bash
-uv run python -m scripts.train \
-  --config experiments/baselines_benchmark/fast_scnn.yaml \
-  --fast-dev-run --offline
+config_dir=$(mktemp -d)
+uv run --only-group submit python -m scripts.compose_experiment \
+  dataset=lunar method=supervised teacher=none student=fast_scnn training.batch_size=16 \
+    training.accumulate_grad_batches=1 training.learning_rate=0.0005 \
+    training.backbone_learning_rate=null --write-config "$config_dir/config.yaml"
+uv run python -m scripts.train --config "$config_dir/config.yaml" --fast-dev-run --offline
 ```
 
 Evaluate an existing checkpoint independently with:
 
 ```bash
 uv run python -m scripts.evaluate \
-  --config experiments/baselines_benchmark/fast_scnn.yaml \
+  --config "$config_dir/config.yaml" \
   --checkpoint results/baselines_benchmark/fast_scnn/seed42/checkpoints/best.ckpt
 ```
 
@@ -49,22 +52,16 @@ Eagle jobs use the development SIF instead of a host virtual environment. See
 export IMAGE_PATH="$HOME/<SERVICE_ID>/project_data/containers/seg-opt/development/images/<VERSION>/seg-opt-development-<VERSION>.sif"
 export DATA_PATH="$HOME/<SERVICE_ID>/project_data/datasets"
 
-sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
-  scripts/train.sbatch \
-  python -m scripts.train \
-  --config experiments/baselines_benchmark/fast_scnn.yaml \
-  --devices 1 \
-  --fast-dev-run
+scripts/submit --smoke-only dataset=lunar method=supervised teacher=none student=fast_scnn \
+  training.batch_size=16 training.accumulate_grad_batches=1 training.learning_rate=0.0005 \
+  training.backbone_learning_rate=null
+scripts/submit --after-job "$SMOKE_JOB_ID" --full-only dataset=lunar method=supervised teacher=none \
+  student=fast_scnn training.batch_size=16 training.accumulate_grad_batches=1 \
+  training.learning_rate=0.0005 training.backbone_learning_rate=null
 ```
 
-Run the active smoke job first, then the benchmark array:
-
-```bash
-sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
-  experiments/baselines_benchmark/smoke.sbatch
-sbatch --account=<SERVICE_ID> --export=ALL,IMAGE_PATH,DATA_PATH \
-  experiments/baselines_benchmark/train.sbatch
-```
+See the [benchmark guide](experiments/baselines_benchmark/README.md) for the
+seven model presets and the [experiment map](experiments/README.md) for launcher options.
 
 ## Documentation
 

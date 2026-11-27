@@ -1,0 +1,5 @@
+# @package model
+
+name: fast_scnn
+pretrained: false
+freeze_backbone: false

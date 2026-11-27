@@ -1,0 +1,10 @@
+# @package data
+
+dataset_root: ../../datasets/artificial_lunar_landscape
+split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
+class_names: [background, sky, small_rock, large_rock]
+image_height: 512
+image_width: 768
+num_workers: 8
+mask_variant: clean
+augmentation: {flip_probability: 0.5, brightness: 0.15, contrast: 0.15, gamma_min: 0.85, gamma_max: 1.15}
