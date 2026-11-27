@@ -18,7 +18,7 @@ from torch.nn.modules.module import _IncompatibleKeys
 from src.data.dataset import _decode_lusnar_pair
 from src.data.processors import SegmentationImageProcessor
 from src.data.transforms import EvalSegmentationTransform
-from src.distillation.bpkd import DistillationLossResult
+from src.distillation.kd import DistillationLossResult
 from src.distillation.sard import capture_features
 from src.train.metrics import SegmentationMetrics
 from src.train.profiling import GpuStatsCallback, NvtxRangesCallback

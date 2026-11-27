@@ -199,21 +199,13 @@ class TeacherConfig:
 
 @dataclass(frozen=True)
 class DistillationConfig:
-    """Validated settings shared by vanilla KD, BPKD and SARD experiments."""
+    """Validated settings shared by vanilla KD and SARD experiments."""
 
-    method: Literal["vanilla", "bpkd", "sard"]
+    method: Literal["vanilla", "sard"]
     teacher: TeacherConfig
     spatial_stride: int = 8
     vanilla_weight: float = 1.0
     vanilla_temperature: float = 1.0
-    body_weight: float = 20.0
-    edge_weight: float = 50.0
-    edge_alpha: float | tuple[float, ...] = 2.0
-    edge_kernel_size: int = 7
-    body_temperature: float = 1.0
-    edge_temperature: float = 1.0
-    prm: bool = True
-    pom: bool = True
     sard_feature_weight: float = 1.0
     sard_distribution_weight: float = 0.5
     sard_edge_weight: float = 2.0
@@ -225,37 +217,16 @@ class DistillationConfig:
     sard_denoiser_hidden_channels: int = 128
 
     def __post_init__(self) -> None:
-        if self.method not in {"vanilla", "bpkd", "sard"}:
-            raise ValueError("distillation method must be 'vanilla', 'bpkd' or 'sard'")
+        if self.method not in {"vanilla", "sard"}:
+            raise ValueError("distillation method must be 'vanilla' or 'sard'")
         if self.spatial_stride <= 0:
             raise ValueError("distillation spatial_stride must be positive")
-        if self.vanilla_weight < 0 or self.body_weight < 0 or self.edge_weight < 0:
-            raise ValueError("distillation weights must be non-negative")
-        if min(
-            self.vanilla_temperature,
-            self.body_temperature,
-            self.edge_temperature,
-        ) <= 0:
-            raise ValueError("distillation temperatures must be positive")
-        if self.edge_kernel_size <= 0 or self.edge_kernel_size % 2 == 0:
-            raise ValueError("edge_kernel_size must be a positive odd integer")
-        alpha = (
-            (float(self.edge_alpha),)
-            if isinstance(self.edge_alpha, (int, float))
-            else tuple(float(value) for value in self.edge_alpha)
-        )
-        if not alpha or any(value < 0 for value in alpha):
-            raise ValueError("edge_alpha values must be non-negative")
-        object.__setattr__(
-            self,
-            "edge_alpha",
-            alpha[0] if len(alpha) == 1 else alpha,
-        )
+        if self.vanilla_weight < 0:
+            raise ValueError("vanilla_weight must be non-negative")
+        if self.vanilla_temperature <= 0:
+            raise ValueError("vanilla_temperature must be positive")
         if self.method == "vanilla" and self.vanilla_weight == 0:
             raise ValueError("vanilla distillation requires vanilla_weight > 0")
-        if self.method == "bpkd":
-            if self.body_weight == 0 and self.edge_weight == 0:
-                raise ValueError("BPKD requires a non-zero body_weight or edge_weight")
         if min(
             self.sard_feature_weight,
             self.sard_distribution_weight,
@@ -287,13 +258,6 @@ class BaselineConfig:
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
     distillation: DistillationConfig | None = None
 
-    def __post_init__(self) -> None:
-        if self.distillation is not None and isinstance(
-            self.distillation.edge_alpha,
-            tuple,
-        ) and len(self.distillation.edge_alpha) != self.num_classes:
-            raise ValueError("edge_alpha must have one value per configured class")
-
     @property
     def num_classes(self) -> int:
         return len(self.data.class_names)
@@ -324,6 +288,15 @@ def _load_distillation_config(value: Any) -> DistillationConfig | None:
     if value is None:
         return None
     raw = _mapping(value, "distillation")
+    # Older resolved configs serialized these inactive fields for vanilla and SARD.
+    if raw.get("method") in ("vanilla", "sard"):
+        for key in (
+            "body_weight", "edge_weight", "edge_alpha", "edge_kernel_size",
+            "body_temperature", "edge_temperature", "prm", "pom",
+        ):
+            raw.pop(key, None)
+    elif raw.get("method") == "bpkd":
+        raise ValueError("distillation method must be 'vanilla' or 'sard'")
     _reject_unknown_fields(
         raw, {f.name for f in fields(DistillationConfig)}, "distillation"
     )
@@ -337,8 +310,6 @@ def _load_distillation_config(value: Any) -> DistillationConfig | None:
         if key not in teacher_raw:
             raise ValueError(f"distillation.teacher is missing required {key!r}")
         teacher_raw[key] = _project_path(teacher_raw[key])
-    if isinstance(raw.get("edge_alpha"), list):
-        raw["edge_alpha"] = tuple(raw["edge_alpha"])
     return DistillationConfig(
         teacher=TeacherConfig(**teacher_raw),
         **raw,

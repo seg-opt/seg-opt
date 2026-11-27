@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import yaml
 from torch import nn
 
 from src.baselines import load_distillation_teacher
@@ -173,7 +174,7 @@ def test_resnet101_teacher_preserves_resnet34_training_protocol(tmp_path):
 @pytest.mark.parametrize(
     ("method", "teacher"),
     [("supervised", "none"), ("vanilla", "benchmark_segformer_b4"),
-     ("bpkd", "bpkd_mask2former_swinl"), ("sard", "benchmark_segformer_b4"),
+     ("sard", "benchmark_segformer_b4"),
      ("vanilla", "strong_dinov3_mask2former")],
 )
 def test_canonical_full_run_configs_use_80_epochs(method, teacher, tmp_path):
@@ -213,40 +214,30 @@ def test_strong_teacher_configs_do_not_reuse_the_unverified_historical_checkpoin
     )
 
 
-def test_distillation_configuration_is_validated_and_round_trips(tmp_path):
-    config_path = tmp_path / "bpkd.yaml"
-    config_path.write_text(
-        """
-model: {name: fast_scnn, pretrained: false}
-data:
-  dataset_root: datasets/artificial_lunar_landscape
-  split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
-  mask_variant: clean
-training:
-  output_dir: results/bpkd/test
-  batch_size: 1
-  accumulate_grad_batches: 16
-  learning_rate: 5.0e-4
-metrics: {trimap_kernel_size: 7}
-distillation:
-  method: bpkd
-  teacher:
-    config_path: teacher.yaml
-    checkpoint_path: results/bpkd/teachers/mask2former/best.ckpt
-  spatial_stride: 8
-  edge_alpha: [1, 2, 3, 4]
-  edge_kernel_size: 7
-""",
-        encoding="utf-8",
+@pytest.mark.parametrize("method", ["vanilla", "sard"])
+def test_legacy_distillation_config_drops_inactive_fields(tmp_path, method):
+    config = load_hydra_config(
+        tmp_path, "dataset=lunar", f"method={method}",
+        "teacher=benchmark_segformer_b4", "student=fast_scnn",
     )
+    config_path = tmp_path / "resolved.yaml"
+    write_resolved_config(config, config_path)
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    legacy_fields = {
+        "body_weight": 20.0, "edge_weight": 50.0, "edge_alpha": 2.0,
+        "edge_kernel_size": 7, "body_temperature": 1.0,
+        "edge_temperature": 1.0, "prm": True, "pom": True,
+    }
+    assert legacy_fields.keys().isdisjoint(raw["distillation"])
+    raw["distillation"].update(legacy_fields)
+    config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
 
-    config = load_config(config_path)
+    assert load_config(config_path) == config
 
-    assert config.data.mask_variant == "clean"
-    assert config.metrics.trimap_kernel_size == 7
-    assert config.distillation is not None
-    assert config.distillation.edge_alpha == (1.0, 2.0, 3.0, 4.0)
-    assert Path(config.distillation.teacher.config_path).is_absolute()
+    raw["distillation"]["method"] = "bpkd"
+    config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    with pytest.raises(ValueError, match="distillation method"):
+        load_config(config_path)
 
 
 @pytest.mark.parametrize(
@@ -340,59 +331,6 @@ def test_cnn_teacher_to_fast_scnn_logit_distillation_config(teacher_name: str, t
 
 
 @pytest.mark.parametrize(
-    ("variant", "body_weight", "edge_weight"),
-    [("body_only", 20.0, 0.0), ("edge_only", 0.0, 50.0), ("bpkd_w7", 20.0, 50.0)],
-)
-def test_resnet34_bpkd_configs_match_vanilla_protocol(tmp_path, variant: str, body_weight: float, edge_weight: float
-) -> None:
-    config = load_hydra_config(
-        tmp_path, "dataset=lunar", "method=bpkd", "teacher=benchmark_resnet34_unet", "student=fast_scnn",
-        f"training.output_dir=results/bpkd/fast_scnn_from_resnet34_unet/{variant}/seed42",
-        "training.batch_size=16", "training.accumulate_grad_batches=1",
-        "training.learning_rate=0.0005", "training.backbone_learning_rate=null",
-        *({"body_only": ("distillation.edge_weight=0.0",),
-           "edge_only": ("distillation.body_weight=0.0",), "bpkd_w7": ()}[variant]),
-    )
-    vanilla = load_hydra_config(
-        tmp_path,
-        'dataset=lunar',
-        'method=vanilla',
-        'teacher=benchmark_resnet34_unet',
-        'student=fast_scnn',
-        'training.output_dir=results/logit_distillation/fast_scnn_from_resnet34_unet/seed42',
-        'training.batch_size=16',
-        'training.accumulate_grad_batches=1',
-        'training.learning_rate=0.0005',
-        'training.backbone_learning_rate=null',
-    )
-
-    assert config.model == vanilla.model
-    assert config.data == vanilla.data
-    assert config.loss == vanilla.loss
-    assert config.metrics == vanilla.metrics
-    assert replace(
-        config.training, output_dir=vanilla.training.output_dir
-    ) == vanilla.training
-    assert Path(config.training.output_dir).parts[-4:] == (
-        "bpkd", "fast_scnn_from_resnet34_unet", variant, "seed42"
-    )
-    assert config.distillation is not None
-    assert vanilla.distillation is not None
-    assert config.distillation.teacher.checkpoint_path == vanilla.distillation.teacher.checkpoint_path
-    assert load_config(config.distillation.teacher.config_path) == load_config(vanilla.distillation.teacher.config_path)
-    assert config.distillation.method == "bpkd"
-    assert config.distillation.spatial_stride == vanilla.distillation.spatial_stride
-    assert config.distillation.body_weight == body_weight
-    assert config.distillation.edge_weight == edge_weight
-    assert config.distillation.body_temperature == 1.0
-    assert config.distillation.edge_temperature == 1.0
-    assert config.distillation.edge_alpha == 2.0
-    assert config.distillation.edge_kernel_size == 7
-    assert config.distillation.prm
-    assert config.distillation.pom
-
-
-@pytest.mark.parametrize(
     ("config_name", "weight", "temperature"),
     [
         ("segformer_b0_from_segformer_b4_s4_w1_t1", 1.0, 1.0),
@@ -431,50 +369,6 @@ def test_segformer_b4_to_b0_stride4_vanilla_kd_sweep(tmp_path, config_name, weig
     assert load_config(config.distillation.teacher.config_path).model.name == "segformer_b4"
 
 
-def test_mask2former_bpkd_configs_are_clean_and_match_the_declared_matrix(tmp_path):
-    variants = [
-        ("fast_scnn", "supervised", "none", ()),
-        ("fast_scnn", "vanilla", "bpkd_mask2former_swinl", ()),
-        ("fast_scnn", "bpkd", "bpkd_mask2former_swinl", ("distillation.edge_weight=0.0",)),
-        ("fast_scnn", "bpkd", "bpkd_mask2former_swinl", ("distillation.body_weight=0.0",)),
-        *(("fast_scnn", "bpkd", "bpkd_mask2former_swinl", (f"distillation.edge_kernel_size={width}",))
-          for width in (3, 5, 7, 9)),
-        ("mask2former_swinl", "supervised", "none", ()),
-        ("mask2former_swinl", "vanilla", "bpkd_mask2former_swinl", ()),
-        ("mask2former_swinl", "bpkd", "bpkd_mask2former_swinl", ()),
-    ]
-    configs = []
-    for student, method, teacher, overrides in variants:
-        batch_size = 2 if student == "fast_scnn" else 1
-        configs.append(load_hydra_config(
-            tmp_path, "dataset=lunar", f"method={method}", f"teacher={teacher}", f"student={student}",
-            f"training.batch_size={batch_size}", f"training.accumulate_grad_batches={16 // batch_size}",
-            *overrides,
-        ))
-
-    assert len(configs) == 11
-    assert all(config.data.mask_variant == "clean" for config in configs)
-    assert all(config.metrics.trimap_kernel_size == 7 for config in configs)
-    students = [config for config in configs if config.model.name == "fast_scnn"]
-    assert len(students) == 8
-    assert all(
-        config.training.batch_size == 2
-        and config.training.accumulate_grad_batches == 8
-        for config in students
-    )
-    mask2former_students = [
-        config
-        for config in configs
-        if config.model.name == "mask2former_swinl" and config.distillation is not None
-    ]
-    assert len(mask2former_students) == 2
-    assert all(
-        config.training.batch_size == 1
-        and config.training.accumulate_grad_batches == 16
-        for config in mask2former_students
-    )
-
-
 def test_config_rejects_unknown_distillation_fields(tmp_path):
     config_path = tmp_path / "invalid.yaml"
     config_path.write_text(
@@ -484,7 +378,7 @@ data:
   dataset_root: datasets/artificial_lunar_landscape
   split_manifest: experiments/baselines_benchmark/split_seed42_aligned.json
 training:
-  output_dir: results/bpkd/test
+  output_dir: results/logit_distillation/test
   batch_size: 1
   accumulate_grad_batches: 16
   learning_rate: 5.0e-4
@@ -507,10 +401,10 @@ def test_teacher_loader_validates_provenance_and_restores_only_model_weights(
     config = load_hydra_config(
         tmp_path,
         'dataset=lunar',
-        'method=bpkd',
-        'teacher=bpkd_mask2former_swinl',
+        'method=vanilla',
+        'teacher=benchmark_segformer_b4',
         'student=fast_scnn',
-        'training.output_dir=results/bpkd/fast_scnn_clean/bpkd_w7/seed42',
+        'training.output_dir=results/logit_distillation/fast_scnn_clean/seed42',
         'training.batch_size=2',
         'training.accumulate_grad_batches=8',
         'training.learning_rate=0.0005',

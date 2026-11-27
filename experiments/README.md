@@ -3,7 +3,7 @@
 ## Training budget
 
 Active full runs use 80 epochs in `baselines_benchmark/`,
-`logit_distillation/`, `bpkd/`, `sard/`, and `strong_teacher_distillation/`.
+`logit_distillation/`, `sard/`, and `strong_teacher_distillation/`.
 Smoke limits are unchanged. `dinov3_mask2former/lunar_teacher_80e`
 identifies a historical teacher run. Matching epochs alone
 does not authorize checkpoint reuse: verify the full protocol and artifacts (see
@@ -19,11 +19,6 @@ unique runner outputs, not historical standalone directories.
 [`baselines_benchmark/`](baselines_benchmark/) compares Fast-SCNN and six teachers
 on clean masks with the aligned seed-42 split. ResNet101-U-Net is an optional
 extra outside the seven-run comparison. Require a positive validation teacher margin.
-
-## BPKD
-
-[`bpkd/`](bpkd/) contains the prepared BPKD experiment matrix. Do not submit
-it until the clean baseline benchmark establishes a positive teacher margin.
 
 ## SARD
 
@@ -58,7 +53,7 @@ exec scripts/submit \
 | Argument | Available presets |
 | --- | --- |
 | `dataset` | `lunar`, `ade20k`, `cityscapes`, `lusnar` |
-| `method` | `supervised`, `vanilla`, `bpkd`, `sard` |
+| `method` | `supervised`, `vanilla`, `sard` |
 | `teacher` | `none` for supervised learning, or a preset in [`hydra/teacher/`](hydra/teacher/) |
 | `student` | A SegFormer, Fast-SCNN, ResNet U-Net, Mask2Former, or DINOv3 preset in [`hydra/student/`](hydra/student/) |
 
@@ -217,9 +212,9 @@ that setting are not controlled CNN loss comparisons. The historical results
 below used 20 epochs; current configurations use 80. Compare only matched
 training budgets and preserve the original resolved configs on HPC.
 
-## CNN BPKD/SARD pilot
+## CNN SARD pilot
 
-Five seed-42 ResNet34 to Fast-SCNN ablations. Configs, weights, feature
+Two seed-42 ResNet34 to Fast-SCNN ablations. Configs, weights, feature
 alignment, and the 20-epoch record versus the 80-epoch YAMLs:
 [SARD README](sard/README.md#controlled-cnn-pilot). Do not pick settings from test scores.
 
@@ -264,7 +259,7 @@ The larger teacher's KD student has +0.079256 pp validation mIoU but
 Reported test mIoU is -0.187683 pp. This single-seed, mixed validation result
 does not establish that a larger teacher distills better.
 
-### BPKD/SARD pilot
+### SARD pilot
 
 Table, loss audit, and the validation small-rock delta:
 [sard/README.md](sard/README.md#completed-cnn-pilot-results).
@@ -299,7 +294,7 @@ The immutable campaign remains on Eagle under
 `/mnt/storage_6/project_data/pl1200-01/issue-15-cnn-kd/campaign-100e-20261109/`.
 Preserve all manifests, checkpoints, configs, split files and W&B logs there.
 
-BPKD/SARD calibration is not part of this completed campaign and has not been submitted.
+SARD calibration is not part of this completed campaign and has not been submitted.
 
 ## Validation-only Transfer Diagnosis (2026-11-10)
 

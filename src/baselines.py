@@ -12,7 +12,7 @@ from src.data.dataset import (
     load_datasets,
     load_split_manifest,
 )
-from src.distillation.bpkd import BPKDLoss, PixelWiseKDLoss
+from src.distillation.kd import PixelWiseKDLoss
 from src.distillation.sard import SARDLoss
 from src.data.processors import SegmentationImageProcessor
 from src.data.transforms import EvalSegmentationTransform, TrainSegmentationTransform
@@ -144,7 +144,7 @@ def build_distillation_loss(
     ignore_index: int,
     student: SemanticSegmenter | None = None,
     teacher: SemanticSegmenter | None = None,
-) -> BPKDLoss | PixelWiseKDLoss | SARDLoss:
+) -> PixelWiseKDLoss | SARDLoss:
     if config.method == "sard":
         if student is None or teacher is None:
             raise ValueError("SARD needs the student and teacher to size its projections")
@@ -163,25 +163,11 @@ def build_distillation_loss(
             spatial_stride=config.spatial_stride,
             ignore_index=ignore_index,
         )
-    if config.method == "vanilla":
-        return PixelWiseKDLoss(
-            num_classes=num_classes,
-            weight=config.vanilla_weight,
-            temperature=config.vanilla_temperature,
-            spatial_stride=config.spatial_stride,
-            ignore_index=ignore_index,
-        )
-    return BPKDLoss(
+    return PixelWiseKDLoss(
         num_classes=num_classes,
-        body_weight=config.body_weight,
-        edge_weight=config.edge_weight,
-        edge_alpha=config.edge_alpha,
-        edge_kernel_size=config.edge_kernel_size,
+        weight=config.vanilla_weight,
+        temperature=config.vanilla_temperature,
         spatial_stride=config.spatial_stride,
-        body_temperature=config.body_temperature,
-        edge_temperature=config.edge_temperature,
-        prm=config.prm,
-        pom=config.pom,
         ignore_index=ignore_index,
     )
 

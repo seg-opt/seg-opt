@@ -50,6 +50,4 @@ Select the teacher solely by validation mIoU; use small-rock and kernel-7
 Trimap small-rock IoU as boundary diagnostics. The summary then reports the
 selected teacher's held-out test metrics and its margins over Fast-SCNN. Do
 not start a distillation run unless the selected teacher improves both
-validation mIoU and validation small-rock IoU over Fast-SCNN. The BPKD suite
-in `experiments/bpkd/` is retained but deferred until this benchmark provides
-that margin.
+validation mIoU and validation small-rock IoU over Fast-SCNN.
